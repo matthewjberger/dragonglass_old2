@@ -12,6 +12,8 @@ snafu = "0.6.7"
 config = "0.10.1"
 serde = { version = "1.0.113", features = ["derive"] }
 nalgebra-glm = "0.7.0"
+image = "0.23.4"
+gltf = { version = "0.15.2", features = ["names"] }
 
 # Opted into by features
 ash = { version = "0.31.0", optional = true }
