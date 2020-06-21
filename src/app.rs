@@ -1,3 +1,4 @@
+use crate::renderer::{Backend, Renderer};
 use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
@@ -46,6 +47,9 @@ pub enum Error {
         name: String,
         source: config::ConfigError,
     },
+
+    #[snafu(display("Failed to create renderer: {}", source))]
+    CreateRenderer { source: crate::renderer::Error },
 }
 
 pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
@@ -109,7 +113,7 @@ impl App {
         let settings = Self::load_settings()?;
 
         let event_loop = EventLoop::new();
-        let window = WindowBuilder::new()
+        let mut window = WindowBuilder::new()
             .with_title(Self::TITLE)
             .with_inner_size(PhysicalSize::new(
                 settings.width as u32,
@@ -117,6 +121,10 @@ impl App {
             ))
             .build(&event_loop)
             .context(CreateWindow)?;
+
+        let mut renderer = Renderer::new(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
+
+        renderer.initialize(&app);
 
         let mut last_frame = Instant::now();
         let mut cursor_moved = false;
@@ -127,7 +135,7 @@ impl App {
                     app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
                         / 1_000_000_f64;
                     last_frame = Instant::now();
-                    // TODO: Update()
+                    renderer.update(&app);
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -188,7 +196,7 @@ impl App {
                     window.request_redraw();
                 }
                 Event::RedrawRequested(_) => {
-                    // TODO: Draw app
+                    renderer.render(&app);
                 }
                 Event::RedrawEventsCleared => {
                     app.input.mouse.wheel_delta = 0.0;
