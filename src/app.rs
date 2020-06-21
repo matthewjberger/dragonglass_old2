@@ -1,15 +1,19 @@
-use log::{debug, info};
+use crate::input::Input;
+use log::debug;
+use nalgebra_glm as glm;
+use serde::Deserialize;
 use simplelog::*;
 use snafu::{ResultExt, Snafu};
-use std::fs::File;
+use std::{fs::File, time::Instant};
 use winit::{
-    dpi::PhysicalSize,
-    event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    dpi::{PhysicalPosition, PhysicalSize},
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+        WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-
-use serde::Deserialize;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -50,7 +54,12 @@ pub struct Settings {
     height: i64,
 }
 
-pub struct App;
+#[derive(Default)]
+pub struct App {
+    pub window_dimensions: glm::Vec2,
+    pub input: Input,
+    pub delta_time: f64,
+}
 
 impl App {
     pub const TITLE: &'static str = "Dragonglass - GLTF Model Viewer";
@@ -59,12 +68,12 @@ impl App {
 
     pub fn run() -> Result<()> {
         Self::setup_logger()?;
-        info!("Setting up app.");
 
+        let mut app = App::default();
         let settings = Self::load_settings()?;
 
         let event_loop = EventLoop::new();
-        let _window = WindowBuilder::new()
+        let window = WindowBuilder::new()
             .with_title(Self::TITLE)
             .with_inner_size(PhysicalSize::new(
                 settings.width as u32,
@@ -73,15 +82,24 @@ impl App {
             .build(&event_loop)
             .context(CreateWindow)?;
 
+        let mut last_frame = Instant::now();
+        let mut cursor_moved = false;
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
-            if let Event::WindowEvent { event, .. } = event {
-                match event {
+            match event {
+                Event::NewEvents { .. } => {
+                    app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
+                        / 1_000_000_f64;
+                    last_frame = Instant::now();
+                    // TODO: Update()
+                }
+                Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     WindowEvent::KeyboardInput {
                         input:
                             KeyboardInput {
                                 virtual_keycode: Some(keycode),
+                                state,
                                 ..
                             },
                         ..
@@ -89,22 +107,69 @@ impl App {
                         if keycode == VirtualKeyCode::Escape {
                             *control_flow = ControlFlow::Exit;
                         }
+                        *app.input.keystates.entry(keycode).or_insert(state) = state;
+                    }
+                    WindowEvent::Resized(PhysicalSize { width, height }) => {
+                        app.window_dimensions = glm::vec2(width as f32, height as f32);
+                    }
+                    WindowEvent::MouseInput { button, state, .. } => {
+                        let clicked = state == ElementState::Pressed;
+                        match button {
+                            MouseButton::Left => app.input.mouse.is_left_clicked = clicked,
+                            MouseButton::Right => app.input.mouse.is_right_clicked = clicked,
+                            _ => {}
+                        }
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        let last_position = app.input.mouse.position;
+                        let current_position = glm::vec2(position.x as _, position.y as _);
+                        app.input.mouse.position = current_position;
+                        app.input.mouse.position_delta = current_position - last_position;
+                        let center = PhysicalPosition::new(
+                            (app.window_dimensions.x / 2.0) as i32,
+                            (app.window_dimensions.y / 2.0) as i32,
+                        );
+                        app.input.mouse.offset_from_center = glm::vec2(
+                            (center.x - position.x as i32) as _,
+                            (center.y - position.y as i32) as _,
+                        );
+                        cursor_moved = true;
+                    }
+                    WindowEvent::MouseWheel {
+                        delta: MouseScrollDelta::LineDelta(_, v_lines),
+                        ..
+                    } => {
+                        app.input.mouse.wheel_delta = v_lines;
                     }
                     _ => {}
+                },
+                Event::MainEventsCleared => {
+                    if !cursor_moved {
+                        app.input.mouse.position_delta = glm::vec2(0.0, 0.0);
+                    }
+                    cursor_moved = false;
+
+                    window.request_redraw();
                 }
+                Event::RedrawRequested(_) => {
+                    // TODO: Draw app
+                }
+                Event::RedrawEventsCleared => {
+                    app.input.mouse.wheel_delta = 0.0;
+                }
+                _ => {}
             }
         });
     }
 
     fn setup_logger() -> Result<()> {
-        let logfile_name = "dragonglass.log";
         CombinedLogger::init(vec![
             TermLogger::new(LevelFilter::max(), Config::default(), TerminalMode::Mixed),
             WriteLogger::new(
                 LevelFilter::Info,
                 Config::default(),
-                File::create(&logfile_name).context(CreateLogFile {
-                    name: logfile_name.to_string(),
+                File::create(Self::LOG_FILE).context(CreateLogFile {
+                    name: Self::LOG_FILE.to_string(),
                 })?,
             ),
         ])
@@ -115,7 +180,7 @@ impl App {
         debug!("Loading settings file");
         let mut config = config::Config::default();
         config
-            .merge(config::File::with_name("settings"))
+            .merge(config::File::with_name(Self::SETTINGS_FILE))
             .context(LoadSettingsFile {
                 name: Self::SETTINGS_FILE.to_string(),
             })?;

@@ -11,6 +11,7 @@ simplelog = { version = "0.8.0", features = ["termcolor"] }
 snafu = "0.6.7"
 config = "0.10.1"
 serde = { version = "1.0.113", features = ["derive"] }
+nalgebra-glm = "0.7.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }

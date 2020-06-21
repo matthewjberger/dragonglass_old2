@@ -1,4 +1,6 @@
-pub mod app;
+mod app;
+mod input;
+
 use app::App;
 use log::{error, info};
 
