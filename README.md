@@ -1,7 +1,7 @@
 # Dragonglass
 
 Dragonglass is a [gltf 2.0](https://khronos.org/gltf) model viewer
-that uses vulkan for physically-based rendering.
+that uses [Vulkan](https://khronos.org/vulkan) for physically-based rendering.
 
 ## Prerequisites
 
