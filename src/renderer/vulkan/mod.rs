@@ -4,6 +4,7 @@ mod resource;
 
 use self::{
     core::{SynchronizationSet, VulkanContext},
+    render::Swapchain,
     resource::CommandPool,
 };
 use crate::{app::App, renderer::Renderer};
@@ -34,6 +35,11 @@ pub enum Error {
     CreateTransientCommandPool {
         source: self::resource::command_pool::Error,
     },
+
+    #[snafu(display("Failed to create a swapchain: {}", source))]
+    CreateSwapchain {
+        source: self::render::swapchain::Error,
+    },
 }
 
 pub(crate) struct VulkanRenderer {
@@ -41,6 +47,7 @@ pub(crate) struct VulkanRenderer {
     synchronization_set: SynchronizationSet,
     command_pool: CommandPool,
     transient_command_pool: CommandPool,
+    swapchain: Swapchain,
     current_frame: usize,
 }
 
@@ -64,11 +71,14 @@ impl VulkanRenderer {
         let logical_size = window.inner_size();
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
+        let swapchain = Swapchain::new(context.clone(), dimensions).context(CreateSwapchain)?;
+
         let renderer = Self {
             context,
             synchronization_set,
             command_pool,
             transient_command_pool,
+            swapchain,
             current_frame: 0,
         };
 
