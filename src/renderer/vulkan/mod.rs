@@ -76,6 +76,12 @@ impl VulkanRenderer {
     }
 }
 
+impl Drop for VulkanRenderer {
+    fn drop(&mut self) {
+        self.context.logical_device().wait_idle();
+    }
+}
+
 impl Renderer for VulkanRenderer {
     fn initialize(&mut self, app: &App) {}
     fn update(&mut self, app: &App) {}
