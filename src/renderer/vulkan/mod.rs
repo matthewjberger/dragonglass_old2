@@ -1,5 +1,7 @@
 mod core;
+mod render;
 mod resource;
+
 use self::{
     core::{SynchronizationSet, VulkanContext},
     resource::CommandPool,
