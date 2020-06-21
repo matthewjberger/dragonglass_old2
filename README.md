@@ -10,7 +10,7 @@ that uses [Vulkan](https://khronos.org/vulkan) for physically-based rendering.
 
 ## Instructions
 
-With rust installed, run:
+To run dragonglass, run this command in the root directory:
 
 ```
 cargo run --release
