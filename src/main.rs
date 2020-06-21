@@ -1,3 +1,10 @@
+pub mod app;
+use app::App;
+use log::{error, info};
+
 fn main() {
-    println!("Hello, world!");
+    match App::run() {
+        Ok(_) => info!("Program exited successfully."),
+        Err(error) => error!("Program failed: {:?}", error),
+    }
 }
