@@ -7,7 +7,6 @@ use crate::renderer::vulkan::{
     },
 };
 use ash::vk;
-use nalgebra_glm as glm;
 use snafu::Snafu;
 use std::sync::Arc;
 
@@ -22,8 +21,7 @@ pub enum Error {
     },
 }
 
-pub struct ForwardRenderingStrategy {
-    context: Arc<VulkanContext>,
+pub struct StrategyHandles {
     pub render_pass: Arc<RenderPass>,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
@@ -32,7 +30,7 @@ pub struct ForwardRenderingStrategy {
     pub framebuffers: Vec<Framebuffer>,
 }
 
-impl ForwardRenderingStrategy {
+impl StrategyHandles {
     pub fn new(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
@@ -67,15 +65,14 @@ impl ForwardRenderingStrategy {
             Self::create_color_texture_view(context.clone(), &color_texture, color_format);
 
         let framebuffers = Self::create_framebuffers(
-            context.clone(),
+            context,
             &swapchain,
             &color_texture_view,
             &depth_texture_view,
             &render_pass,
         );
 
-        let strategy = ForwardRenderingStrategy {
-            context,
+        let handles = StrategyHandles {
             render_pass,
             depth_texture,
             depth_texture_view,
@@ -84,7 +81,7 @@ impl ForwardRenderingStrategy {
             framebuffers,
         };
 
-        Ok(strategy)
+        Ok(handles)
     }
 
     fn create_render_pass(
@@ -403,6 +400,47 @@ impl ForwardRenderingStrategy {
             .build();
         ImageView::new(context, create_info).unwrap()
     }
+}
+
+pub struct ForwardRenderingStrategy {
+    context: Arc<VulkanContext>,
+    handles: Option<StrategyHandles>,
+}
+
+impl ForwardRenderingStrategy {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        swapchain: &Swapchain,
+    ) -> Result<Self> {
+        let handles = StrategyHandles::new(context.clone(), command_pool, swapchain)?;
+        let strategy = Self {
+            context,
+            handles: Some(handles),
+        };
+        Ok(strategy)
+    }
+
+    pub fn handles(&self) -> &StrategyHandles {
+        // FIXME: Use a result here
+        self.handles.as_ref().expect("Failed to get handles!")
+    }
+
+    fn record_all_command_buffers(
+        &mut self,
+        extent: &vk::Extent2D,
+        command_pool: &mut CommandPool,
+    ) {
+        command_pool
+            .command_buffers()
+            .iter()
+            .enumerate()
+            .for_each(|(index, buffer)| {
+                let command_buffer = *buffer;
+                let framebuffer = self.handles().framebuffers[index].framebuffer();
+                self.record_single_command_buffer(extent, framebuffer, command_buffer);
+            });
+    }
 
     fn record_single_command_buffer(
         &self,
@@ -429,7 +467,7 @@ impl ForwardRenderingStrategy {
             vk::CommandBufferUsageFlags::SIMULTANEOUS_USE,
             || {
                 let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                    .render_pass(self.render_pass.render_pass())
+                    .render_pass(self.handles().render_pass.render_pass())
                     .framebuffer(framebuffer)
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
@@ -438,7 +476,8 @@ impl ForwardRenderingStrategy {
                     .clear_values(&clear_values)
                     .build();
 
-                self.render_pass
+                self.handles()
+                    .render_pass
                     .record(command_buffer, &render_pass_begin_info, || {
                         // TODO: Update viewport and issue commands
                     });
@@ -450,19 +489,18 @@ impl ForwardRenderingStrategy {
 impl Strategy for ForwardRenderingStrategy {
     fn initialize(&mut self, extent: &vk::Extent2D, command_pool: &mut CommandPool) {
         command_pool
-            .allocate_command_buffers(self.framebuffers.len() as _)
+            .allocate_command_buffers(self.handles().framebuffers.len() as _)
             .unwrap();
-
-        command_pool
-            .command_buffers()
-            .iter()
-            .enumerate()
-            .for_each(|(index, buffer)| {
-                let command_buffer = *buffer;
-                let framebuffer = self.framebuffers[index].framebuffer();
-                self.record_single_command_buffer(extent, framebuffer, command_buffer);
-            });
+        self.record_all_command_buffers(&extent, command_pool);
     }
 
-    fn recreate_swapchain(&mut self, window_dimensions: &glm::Vec2) {}
+    fn recreate_swapchain(&mut self, swapchain: &Swapchain, command_pool: &mut CommandPool) {
+        self.handles = None;
+        let handles = StrategyHandles::new(self.context.clone(), command_pool, swapchain)
+            .expect("Failed to create strategy handles");
+        self.handles = Some(handles);
+
+        let extent = swapchain.properties().extent;
+        self.record_all_command_buffers(&extent, command_pool);
+    }
 }

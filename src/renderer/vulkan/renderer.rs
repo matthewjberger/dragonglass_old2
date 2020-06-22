@@ -10,6 +10,7 @@ use crate::renderer::vulkan::{
 };
 use crate::{app::App, renderer::Renderer};
 use ash::vk;
+use nalgebra_glm as glm;
 use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
 use winit::window::Window;
@@ -44,6 +45,11 @@ pub enum Error {
         source: crate::renderer::vulkan::render::swapchain::Error,
     },
 
+    #[snafu(display("Failed to recreate a swapchain: {}", source))]
+    RecreateSwapchain {
+        source: crate::renderer::vulkan::render::swapchain::Error,
+    },
+
     #[snafu(display("Failed to create a rendering strategy '{:#?}': {}", kind, source))]
     CreateRenderingStrategy {
         kind: StrategyKind,
@@ -56,7 +62,7 @@ pub struct VulkanRenderer {
     synchronization_set: SynchronizationSet,
     command_pool: CommandPool,
     transient_command_pool: CommandPool,
-    swapchain: Swapchain,
+    swapchain: Option<Swapchain>,
     strategy: Box<dyn Strategy>,
     current_frame: usize,
 }
@@ -99,12 +105,36 @@ impl VulkanRenderer {
             synchronization_set,
             command_pool,
             transient_command_pool,
-            swapchain,
+            swapchain: Some(swapchain),
             strategy: Box::new(strategy),
             current_frame: 0,
         };
 
         Ok(renderer)
+    }
+
+    fn recreate_swapchain(&mut self, window_dimensions: &glm::Vec2) -> Result<()> {
+        self.context.logical_device().wait_idle();
+
+        self.swapchain = None;
+
+        let swapchain = Swapchain::new(
+            self.context.clone(),
+            [window_dimensions.x as _, window_dimensions.y as _],
+        )
+        .context(RecreateSwapchain)?;
+
+        self.strategy
+            .recreate_swapchain(&swapchain, &mut self.command_pool);
+
+        self.swapchain = Some(swapchain);
+
+        Ok(())
+    }
+
+    fn swapchain(&self) -> &Swapchain {
+        // FIXME: Use a result here
+        self.swapchain.as_ref().expect("Failed to get swapchain!")
     }
 }
 
@@ -116,7 +146,7 @@ impl Drop for VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     fn initialize(&mut self, app: &App) {
-        let extent = self.swapchain.properties().extent;
+        let extent = self.swapchain().properties().extent;
         self.strategy.initialize(&extent, &mut self.command_pool);
     }
 
@@ -131,7 +161,7 @@ impl Renderer for VulkanRenderer {
             .logical_device()
             .wait_for_fence(&current_frame_synchronization);
 
-        let image_index_result = self.swapchain.acquire_next_image(
+        let image_index_result = self.swapchain().acquire_next_image(
             current_frame_synchronization.image_available(),
             vk::Fence::null(),
         );
@@ -139,7 +169,8 @@ impl Renderer for VulkanRenderer {
         let image_index = match image_index_result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.strategy.recreate_swapchain(&app.window_dimensions);
+                self.recreate_swapchain(&app.window_dimensions)
+                    .expect("Failed to recreate swapchain!");
                 return;
             }
             Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
@@ -161,7 +192,7 @@ impl Renderer for VulkanRenderer {
             )
             .unwrap();
 
-        let swapchain_presentation_result = self.swapchain.present_rendered_image(
+        let swapchain_presentation_result = self.swapchain().present_rendered_image(
             &current_frame_synchronization,
             &image_indices,
             self.context.present_queue(),
@@ -169,10 +200,12 @@ impl Renderer for VulkanRenderer {
 
         match swapchain_presentation_result {
             Ok(is_suboptimal) if is_suboptimal => {
-                self.strategy.recreate_swapchain(&app.window_dimensions);
+                self.recreate_swapchain(&app.window_dimensions)
+                    .expect("Failed to recreate swapchain!");
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.strategy.recreate_swapchain(&app.window_dimensions);
+                self.recreate_swapchain(&app.window_dimensions)
+                    .expect("Failed to recreate swapchain!");
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),
             _ => {}

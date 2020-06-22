@@ -4,7 +4,6 @@ pub mod forward;
 
 use crate::renderer::vulkan::{core::VulkanContext, render::Swapchain, resource::CommandPool};
 use ash::vk;
-use nalgebra_glm as glm;
 use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
 
@@ -26,7 +25,7 @@ pub enum StrategyKind {
 
 pub trait Strategy {
     fn initialize(&mut self, extent: &vk::Extent2D, command_pool: &mut CommandPool);
-    fn recreate_swapchain(&mut self, window_dimensions: &glm::Vec2);
+    fn recreate_swapchain(&mut self, swapchain: &Swapchain, command_pool: &mut CommandPool);
 }
 
 impl dyn Strategy {
