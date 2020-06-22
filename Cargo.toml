@@ -23,6 +23,11 @@ raw-window-handle = { version = "0.3.3", optional = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }
 
+[build-dependencies]
+shader-compilation = { version = "*", path = "shader-compilation" }
+log = "0.4.8"
+simplelog = { version = "0.8.0", features = ["termcolor"] }
+
 [features]
 default = ["vulkan"]
 vulkan = ["ash", "vk-mem", "raw-window-handle"]

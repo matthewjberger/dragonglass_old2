@@ -333,6 +333,7 @@ dependencies = [
  "nalgebra-glm",
  "raw-window-handle",
  "serde 1.0.113",
+ "shader-compilation",
  "simplelog",
  "snafu",
  "vk-mem",
@@ -406,6 +407,12 @@ dependencies = [
  "color_quant",
  "lzw",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gltf"
@@ -1286,6 +1293,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "110b3dbdf8607ec493c22d5d947753282f3bae73c0f56d322af1e8c78e4c23d5"
 dependencies = [
  "serde 0.8.23",
+]
+
+[[package]]
+name = "shader-compilation"
+version = "0.1.0"
+dependencies = [
+ "glob",
+ "log",
 ]
 
 [[package]]
