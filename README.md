@@ -17,22 +17,22 @@ cargo run --release
 
 ## Features
 
-- [] Physically Based Rendering
-- [] Depth of Field
-- [] Chromatic Aberration
-- [] Film Grain
-- [] Bloom
-- [] Shadow Mapping
-- [] Cascaded Shadow Mapping
-- [] Omnidirectional Shadow Mapping
-- [] Motion Blur
-- [] Deferred Rendering Pipeline
-- [] Forward+ Rendering Pipeline
-- [] Screen Space Reflections
-- [] Screenshots
+- [ ] Physically Based Rendering
+- [ ] Depth of Field
+- [ ] Chromatic Aberration
+- [ ] Film Grain
+- [ ] Bloom
+- [ ] Shadow Mapping
+- [ ] Cascaded Shadow Mapping
+- [ ] Omnidirectional Shadow Mapping
+- [ ] Motion Blur
+- [ ] Deferred Rendering Pipeline
+- [ ] Forward+ Rendering Pipeline
+- [ ] Screen Space Reflections
+- [ ] Screenshots
 
 ### Rendering Backends
 
-- [] Vulkan (default)
-- [] OpenGL
-- [] DirectX 12
+- [ ] Vulkan (default)
+- [ ] OpenGL
+- [ ] DirectX 12
