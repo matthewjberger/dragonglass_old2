@@ -6,6 +6,10 @@ use std::{boxed::Box, error::Error, fs::File};
 type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
 
 fn main() -> Result<()> {
+    if !cfg!(feature = "vulkan") {
+        return Ok(());
+    }
+
     init_logger()?;
 
     let shader_directory = "assets/shaders";
