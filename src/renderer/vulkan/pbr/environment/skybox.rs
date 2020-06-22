@@ -1,17 +1,11 @@
-use crate::renderer::{
-    byte_slice_from,
-    vulkan::{
-        core::VulkanContext,
-        environment::{Offscreen, UnitCube},
-        render::{
-            DescriptorPool, DescriptorSetLayout, Framebuffer, GraphicsPipeline, PipelineLayout,
-            RenderPass, RenderPipeline, RenderPipelineSettingsBuilder,
-        },
-        resource::{
-            image::{Cubemap, ImageLayoutTransition},
-            Buffer, CommandPool, Shader, ShaderCache, ShaderPathSetBuilder,
-        },
+use crate::renderer::vulkan::{
+    core::VulkanContext,
+    pbr::environment::UnitCube,
+    render::{
+        DescriptorPool, DescriptorSetLayout, RenderPass, RenderPipeline,
+        RenderPipelineSettingsBuilder,
     },
+    resource::{image::Cubemap, Buffer, CommandPool, ShaderCache, ShaderPathSetBuilder},
 };
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;

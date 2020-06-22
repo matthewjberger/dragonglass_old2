@@ -2,7 +2,12 @@ pub use self::forward::*;
 
 pub mod forward;
 
-use crate::renderer::vulkan::{core::VulkanContext, render::Swapchain, resource::CommandPool};
+use crate::renderer::vulkan::{
+    core::VulkanContext,
+    pbr::PbrScene,
+    render::{RenderPass, Swapchain},
+    resource::CommandPool,
+};
 use ash::vk;
 use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
@@ -24,12 +29,25 @@ pub enum StrategyKind {
 }
 
 pub trait Strategy {
-    fn initialize(&mut self, extent: &vk::Extent2D, command_pool: &mut CommandPool);
-    fn recreate_swapchain(&mut self, swapchain: &Swapchain, command_pool: &mut CommandPool);
+    fn initialize(
+        &mut self,
+        extent: &vk::Extent2D,
+        command_pool: &mut CommandPool,
+        scene: &mut PbrScene,
+    );
+
+    fn recreate_swapchain(
+        &mut self,
+        swapchain: &Swapchain,
+        command_pool: &mut CommandPool,
+        scene: &mut PbrScene,
+    );
+
+    fn render_pass(&mut self) -> Arc<RenderPass>;
 }
 
 impl dyn Strategy {
-    pub fn new(
+    pub fn create_strategy(
         kind: &StrategyKind,
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,

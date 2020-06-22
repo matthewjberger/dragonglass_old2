@@ -1,7 +1,8 @@
 pub use renderer::{Error, VulkanRenderer};
 
+mod asset;
 mod core;
-mod environment;
+mod pbr;
 mod render;
 mod renderer;
 mod resource;

@@ -30,6 +30,10 @@ cargo run --release
 - [ ] Forward+ Rendering Pipeline
 - [ ] Screen Space Reflections
 - [ ] Screenshots
+- [ ] First Person Camera
+- [ ] Orbital Camera
+- [ ] Vignetting
+- [ ] Lens Flare
 
 ### Rendering Backends
 

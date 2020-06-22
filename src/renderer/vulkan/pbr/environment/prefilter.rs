@@ -2,7 +2,7 @@ use crate::renderer::{
     byte_slice_from,
     vulkan::{
         core::VulkanContext,
-        environment::{Offscreen, UnitCube},
+        pbr::environment::{Offscreen, UnitCube},
         render::{
             DescriptorPool, DescriptorSetLayout, Framebuffer, GraphicsPipeline, PipelineLayout,
             RenderPass,
@@ -18,20 +18,21 @@ use nalgebra_glm as glm;
 use std::{ffi::CString, sync::Arc};
 
 #[allow(dead_code)]
-struct PushBlockIrradiance {
+struct PushBlockPrefilterEnv {
     mvp: glm::Mat4,
-    delta_phi: f32,
-    delta_theta: f32,
+    roughness: f32,
+    num_samples: u32,
 }
 
-pub struct IrradianceMap {
+pub struct PrefilterMap {
     pub cubemap: Cubemap,
 }
 
-impl IrradianceMap {
+impl PrefilterMap {
     pub fn new(context: Arc<VulkanContext>, command_pool: &CommandPool, cubemap: &Cubemap) -> Self {
-        let dimension = 64;
-        let format = vk::Format::R32G32B32A32_SFLOAT;
+        let dimension = 512;
+        let format = vk::Format::R16G16B16A16_SFLOAT;
+
         let output_cubemap = Cubemap::new(context.clone(), dimension, format).unwrap();
 
         let render_pass = Self::create_render_pass(context.clone(), format);
@@ -174,11 +175,12 @@ impl IrradianceMap {
 
                         // Render scene from cube face's pov
                         render_pass.record(command_buffer, &render_pass_begin_info, || {
-                            let push_block_irradiance = PushBlockIrradiance {
+                            let push_block_irradiance = PushBlockPrefilterEnv {
                                 mvp: glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1, 512.0)
                                     * matrix,
-                                delta_phi: 2_f32.to_radians(),
-                                delta_theta: (0.5_f32 * std::f32::consts::PI) / 64_f32,
+                                roughness: mip_level as f32
+                                    / (output_cubemap.description.mip_levels - 1) as f32,
+                                num_samples: 32,
                             };
 
                             device.cmd_push_constants(
@@ -217,7 +219,6 @@ impl IrradianceMap {
                     src_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
                     dst_stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
                 };
-
                 offscreen
                     .texture
                     .transition(&command_pool, &transition, 1)
@@ -421,7 +422,7 @@ impl IrradianceMap {
 
         let push_constant_range = vk::PushConstantRange::builder()
             .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
-            .size(std::mem::size_of::<PushBlockIrradiance>() as u32)
+            .size(std::mem::size_of::<PushBlockPrefilterEnv>() as u32)
             .build();
         let push_constant_ranges = [push_constant_range];
 
@@ -546,7 +547,7 @@ impl IrradianceMap {
 
         let fragment_shader = Shader::from_file(
             context,
-            "assets/shaders/environment/irradiancecube.frag.spv",
+            "assets/shaders/environment/prefilterenvmap.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             "main",
         )

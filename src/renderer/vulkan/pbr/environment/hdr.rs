@@ -2,7 +2,7 @@ use crate::renderer::{
     byte_slice_from,
     vulkan::{
         core::VulkanContext,
-        environment::{Offscreen, UnitCube},
+        pbr::environment::{Offscreen, UnitCube},
         render::{
             DescriptorPool, DescriptorSetLayout, Framebuffer, RenderPass, RenderPipeline,
             RenderPipelineSettingsBuilder,

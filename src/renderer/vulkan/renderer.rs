@@ -2,8 +2,9 @@ use crate::renderer::vulkan::{
     core::{
         sync::synchronization_set::SynchronizationSetConstants, SynchronizationSet, VulkanContext,
     },
+    pbr::PbrScene,
     render::Swapchain,
-    resource::CommandPool,
+    resource::{CommandPool, ShaderCache},
     strategy::{Strategy, StrategyKind},
 };
 use crate::{app::App, renderer::Renderer};
@@ -63,6 +64,8 @@ pub struct VulkanRenderer {
     swapchain: Option<Swapchain>,
     strategy: Box<dyn Strategy>,
     current_frame: usize,
+    scene: Option<PbrScene>,
+    shader_cache: ShaderCache,
 }
 
 impl VulkanRenderer {
@@ -88,7 +91,7 @@ impl VulkanRenderer {
         let swapchain = Swapchain::new(context.clone(), dimensions).context(CreateSwapchain)?;
 
         let strategy_kind = StrategyKind::Forward;
-        let strategy = Strategy::new(
+        let strategy = Strategy::create_strategy(
             &strategy_kind,
             context.clone(),
             &transient_command_pool,
@@ -106,6 +109,8 @@ impl VulkanRenderer {
             swapchain: Some(swapchain),
             strategy: Box::new(strategy),
             current_frame: 0,
+            scene: None,
+            shader_cache: ShaderCache::default(),
         };
 
         Ok(renderer)
@@ -122,8 +127,11 @@ impl VulkanRenderer {
         )
         .context(RecreateSwapchain)?;
 
-        self.strategy
-            .recreate_swapchain(&swapchain, &mut self.command_pool);
+        self.strategy.recreate_swapchain(
+            &swapchain,
+            &mut self.command_pool,
+            &mut self.scene.as_mut().unwrap(),
+        );
 
         self.swapchain = Some(swapchain);
 
@@ -144,11 +152,48 @@ impl Drop for VulkanRenderer {
 
 impl Renderer for VulkanRenderer {
     fn initialize(&mut self, app: &App) {
+        let asset_names = vec![
+            "assets/models/DamagedHelmet.glb",
+            "assets/models/CesiumMan.glb",
+            "assets/models/AlphaBlendModeTest.glb",
+            "assets/models/MetalRoughSpheres.glb",
+        ];
+
+        let mut scene_data = PbrScene::new(
+            self.context.clone(),
+            &self.transient_command_pool,
+            &mut self.shader_cache,
+            self.strategy.render_pass(),
+            &asset_names,
+        );
+
         let extent = self.swapchain().properties().extent;
-        self.strategy.initialize(&extent, &mut self.command_pool);
+        self.strategy
+            .initialize(&extent, &mut self.command_pool, &mut scene_data);
+
+        self.scene = Some(scene_data);
     }
 
-    fn update(&mut self, app: &App) {}
+    fn update(&mut self, app: &App) {
+        let camera_position = glm::vec4(-10.0, -2.0, -3.0, 1.0);
+        let projection = glm::perspective_zo(
+            self.swapchain().properties().aspect_ratio(),
+            90_f32.to_radians(),
+            0.1_f32,
+            1000_f32,
+        );
+
+        let view = glm::look_at(
+            &camera_position.xyz(),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 1.0, 0.0),
+        );
+
+        self.scene
+            .as_mut()
+            .unwrap()
+            .update(camera_position, projection, view, app.delta_time);
+    }
 
     fn render(&mut self, app: &App) {
         let current_frame_synchronization = self

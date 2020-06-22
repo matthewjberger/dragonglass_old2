@@ -5,28 +5,31 @@ authors = ["Matthew J. Berger <matthewberger@nevada.unr.edu>"]
 edition = "2018"
 
 [dependencies]
-winit = "0.22.2"
+config = "0.10.1"
+derive_builder = "0.9.0"
+glob = "0.3.0"
+gltf = { version = "0.15.2", features = ["names"] }
+image = "0.23.4"
 log = "0.4.8"
+nalgebra = "0.21.0"
+nalgebra-glm = "0.7.0"
+petgraph = "0.5.0"
+serde = { version = "1.0.113", features = ["derive"] }
 simplelog = { version = "0.8.0", features = ["termcolor"] }
 snafu = "0.6.7"
-config = "0.10.1"
-serde = { version = "1.0.113", features = ["derive"] }
-nalgebra-glm = "0.7.0"
-image = "0.23.4"
-gltf = { version = "0.15.2", features = ["names"] }
-derive_builder = "0.9.0"
+winit = "0.22.2"
 
 # Opted into by features
 ash = { version = "0.31.0", optional = true }
-vk-mem = { version = "0.2.2", optional = true }
 raw-window-handle = { version = "0.3.3", optional = true }
+vk-mem = { version = "0.2.2", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }
 
 [build-dependencies]
-shader-compilation = { version = "*", path = "shader-compilation" }
 log = "0.4.8"
+shader-compilation = { version = "*", path = "shader-compilation" }
 simplelog = { version = "0.8.0", features = ["termcolor"] }
 
 [features]

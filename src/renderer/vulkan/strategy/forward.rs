@@ -1,5 +1,6 @@
 use crate::renderer::vulkan::{
     core::VulkanContext,
+    pbr::PbrScene,
     render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
     resource::{
         image::{ImageView, Texture},
@@ -431,6 +432,7 @@ impl ForwardRenderingStrategy {
         &mut self,
         extent: &vk::Extent2D,
         command_pool: &mut CommandPool,
+        scene: &mut PbrScene,
     ) {
         command_pool
             .command_buffers()
@@ -439,7 +441,7 @@ impl ForwardRenderingStrategy {
             .for_each(|(index, buffer)| {
                 let command_buffer = *buffer;
                 let framebuffer = self.handles().framebuffers[index].framebuffer();
-                self.record_single_command_buffer(extent, framebuffer, command_buffer);
+                self.record_single_command_buffer(extent, framebuffer, command_buffer, scene);
             });
     }
 
@@ -448,6 +450,7 @@ impl ForwardRenderingStrategy {
         extent: &vk::Extent2D,
         framebuffer: vk::Framebuffer,
         command_buffer: vk::CommandBuffer,
+        scene: &mut PbrScene,
     ) {
         let clear_values = [
             vk::ClearValue {
@@ -480,7 +483,11 @@ impl ForwardRenderingStrategy {
                 self.handles()
                     .render_pass
                     .record(command_buffer, &render_pass_begin_info, || {
-                        // TODO: Update viewport and issue commands
+                        self.context
+                            .logical_device()
+                            .update_viewport(command_buffer, *extent);
+
+                        scene.issue_commands(command_buffer);
                     });
             },
         );
@@ -488,20 +495,34 @@ impl ForwardRenderingStrategy {
 }
 
 impl Strategy for ForwardRenderingStrategy {
-    fn initialize(&mut self, extent: &vk::Extent2D, command_pool: &mut CommandPool) {
+    fn initialize(
+        &mut self,
+        extent: &vk::Extent2D,
+        command_pool: &mut CommandPool,
+        scene: &mut PbrScene,
+    ) {
         command_pool
             .allocate_command_buffers(self.handles().framebuffers.len() as _)
             .unwrap();
-        self.record_all_command_buffers(&extent, command_pool);
+        self.record_all_command_buffers(&extent, command_pool, scene);
     }
 
-    fn recreate_swapchain(&mut self, swapchain: &Swapchain, command_pool: &mut CommandPool) {
+    fn recreate_swapchain(
+        &mut self,
+        swapchain: &Swapchain,
+        command_pool: &mut CommandPool,
+        scene: &mut PbrScene,
+    ) {
         self.handles = None;
         let handles = StrategyHandles::new(self.context.clone(), command_pool, swapchain)
             .expect("Failed to create strategy handles");
         self.handles = Some(handles);
 
         let extent = swapchain.properties().extent;
-        self.record_all_command_buffers(&extent, command_pool);
+        self.record_all_command_buffers(&extent, command_pool, scene);
+    }
+
+    fn render_pass(&mut self) -> Arc<RenderPass> {
+        self.handles().render_pass.clone()
     }
 }
