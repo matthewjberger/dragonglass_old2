@@ -122,7 +122,8 @@ impl App {
             .build(&event_loop)
             .context(CreateWindow)?;
 
-        let mut renderer = Renderer::new(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
+        let mut renderer =
+            Renderer::create_backend(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
 
         renderer.initialize(&app);
 

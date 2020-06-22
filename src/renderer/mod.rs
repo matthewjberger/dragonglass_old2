@@ -1,8 +1,8 @@
 mod vulkan;
 
+use crate::renderer::vulkan::VulkanRenderer;
 use crate::App;
 use snafu::{ResultExt, Snafu};
-use vulkan::VulkanRenderer;
 use winit::window::Window;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -11,9 +11,12 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(visibility = "pub(crate)")]
 pub enum Error {
     #[snafu(display("Failed to create a vulkan renderer: {}", source))]
-    CreateVulkanRenderer { source: vulkan::Error },
+    CreateVulkanRenderer {
+        source: crate::renderer::vulkan::Error,
+    },
 }
 
+#[derive(Debug)]
 pub enum Backend {
     Vulkan,
 }
@@ -25,14 +28,9 @@ pub trait Renderer {
 }
 
 impl dyn Renderer {
-    pub fn new(backend: &Backend, window: &mut Window) -> Result<Box<dyn Renderer>> {
+    pub fn create_backend(backend: &Backend, window: &mut Window) -> Result<impl Renderer> {
         match backend {
-            Backend::Vulkan => {
-                let vulkan_renderer = std::boxed::Box::new(
-                    VulkanRenderer::new(window).context(CreateVulkanRenderer)?,
-                );
-                Ok(vulkan_renderer)
-            }
+            Backend::Vulkan => VulkanRenderer::new(window).context(CreateVulkanRenderer),
         }
     }
 }
