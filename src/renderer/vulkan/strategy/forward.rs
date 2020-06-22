@@ -1,10 +1,11 @@
 use crate::renderer::vulkan::{
     core::VulkanContext,
-    render::{strategy::Strategy, Framebuffer, RenderPass, Swapchain, SwapchainProperties},
+    render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
     resource::{
         image::{ImageView, Texture},
         CommandPool,
     },
+    strategy::Strategy,
 };
 use ash::vk;
 use snafu::Snafu;

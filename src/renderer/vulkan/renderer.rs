@@ -2,11 +2,9 @@ use crate::renderer::vulkan::{
     core::{
         sync::synchronization_set::SynchronizationSetConstants, SynchronizationSet, VulkanContext,
     },
-    render::{
-        strategy::{Strategy, StrategyKind},
-        Swapchain,
-    },
+    render::Swapchain,
     resource::CommandPool,
+    strategy::{Strategy, StrategyKind},
 };
 use crate::{app::App, renderer::Renderer};
 use ash::vk;
@@ -53,7 +51,7 @@ pub enum Error {
     #[snafu(display("Failed to create a rendering strategy '{:#?}': {}", kind, source))]
     CreateRenderingStrategy {
         kind: StrategyKind,
-        source: crate::renderer::vulkan::render::strategy::Error,
+        source: crate::renderer::vulkan::strategy::Error,
     },
 }
 

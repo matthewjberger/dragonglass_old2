@@ -14,7 +14,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[snafu(display("Failed to create a forward renderer: {}", source))]
     CreateForwardRenderingStrategy {
-        source: crate::renderer::vulkan::render::strategy::forward::Error,
+        source: crate::renderer::vulkan::strategy::forward::Error,
     },
 }
 
