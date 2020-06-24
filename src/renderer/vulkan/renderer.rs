@@ -247,15 +247,27 @@ impl Renderer for VulkanRenderer {
     fn update(&mut self, app: &App) {
         let projection = glm::perspective_zo(
             self.swapchain().properties().aspect_ratio(),
-            90_f32.to_radians(),
+            70_f32.to_radians(),
             0.1_f32,
             1000_f32,
         );
 
+        let camera_position = if app.using_free_camera {
+            *app.free_camera.position()
+        } else {
+            app.orbital_camera.position()
+        };
+
+        let view_matrix = if app.using_free_camera {
+            app.free_camera.view_matrix()
+        } else {
+            app.orbital_camera.view_matrix()
+        };
+
         self.scene.as_mut().unwrap().update(
-            *app.camera.position(),
+            camera_position,
             projection,
-            app.camera.view_matrix(),
+            view_matrix,
             app.delta_time,
         );
     }

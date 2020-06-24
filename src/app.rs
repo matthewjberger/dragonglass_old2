@@ -1,5 +1,5 @@
 use crate::{
-    camera::FreeCamera,
+    camera::{FreeCamera, OrbitalCamera},
     renderer::{Backend, Renderer},
 };
 use log::debug;
@@ -16,7 +16,7 @@ use winit::{
         WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -105,7 +105,9 @@ pub struct App {
     pub window_dimensions: glm::Vec2,
     pub input: Input,
     pub delta_time: f64,
-    pub camera: FreeCamera,
+    pub free_camera: FreeCamera,
+    pub orbital_camera: OrbitalCamera,
+    pub using_free_camera: bool,
 }
 
 impl App {
@@ -134,20 +136,7 @@ impl App {
             window.inner_size().height as _,
         );
 
-        app.camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
-        app.camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
-
-        // Free camera setup. Hide, grab, and center cursor
-        {
-            window.set_cursor_visible(false);
-            window
-                .set_cursor_grab(true)
-                .expect("Failed to grab cursor!");
-
-            let center = app.window_center();
-            window.set_cursor_position(center).context(CenterCursor)?;
-            app.input.mouse.position = glm::vec2(center.x as _, center.y as _);
-        }
+        app.setup_camera(&window)?;
 
         let mut renderer =
             Renderer::create_backend(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
@@ -163,11 +152,12 @@ impl App {
                     app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
                         / 1_000_000_f64;
                     last_frame = Instant::now();
-                    app.camera.update(&app.input, app.delta_time as f32);
+
+                    app.update_camera();
+
                     renderer.update(&app);
 
-                    // Center cursor for free camera
-                    let _ = window.set_cursor_position(app.window_center());
+                    app.reset_controls(&mut window);
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -184,6 +174,11 @@ impl App {
                             *control_flow = ControlFlow::Exit;
                         }
                         *app.input.keystates.entry(keycode).or_insert(state) = state;
+
+                        if keycode == VirtualKeyCode::Tab && state == ElementState::Pressed {
+                            app.using_free_camera = !app.using_free_camera;
+                            let _ = app.setup_camera(&window);
+                        }
                     }
                     WindowEvent::Resized(PhysicalSize { width, height }) => {
                         app.window_dimensions = glm::vec2(width as f32, height as f32);
@@ -227,9 +222,6 @@ impl App {
                 Event::RedrawRequested(_) => {
                     renderer.render(&app);
                 }
-                Event::RedrawEventsCleared => {
-                    app.input.mouse.wheel_delta = 0.0;
-                }
                 _ => {}
             }
         });
@@ -266,5 +258,43 @@ impl App {
             (self.window_dimensions.x / 2.0) as i32,
             (self.window_dimensions.y / 2.0) as i32,
         )
+    }
+
+    fn setup_camera(&mut self, window: &Window) -> Result<()> {
+        if self.using_free_camera {
+            self.free_camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
+            self.free_camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
+
+            // Free camera setup. Hide, grab, and center cursor
+            window.set_cursor_visible(false);
+            let _ = window.set_cursor_grab(true);
+
+            let center = self.window_center();
+            window.set_cursor_position(center).context(CenterCursor)?;
+            self.input.mouse.position = glm::vec2(center.x as _, center.y as _);
+        } else {
+            // orbital
+            window.set_cursor_visible(true);
+            let _ = window.set_cursor_grab(false);
+        }
+
+        Ok(())
+    }
+
+    fn update_camera(&mut self) {
+        if self.using_free_camera {
+            self.free_camera.update(&self.input, self.delta_time as f32);
+        } else {
+            self.orbital_camera
+                .update(&self.input, self.delta_time as f32);
+        }
+    }
+
+    fn reset_controls(&mut self, window: &mut Window) {
+        if self.using_free_camera {
+            // Center cursor for free camera
+            let _ = window.set_cursor_position(self.window_center());
+        }
+        self.input.mouse.wheel_delta = 0.0;
     }
 }
