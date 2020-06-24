@@ -253,7 +253,7 @@ impl Renderer for VulkanRenderer {
         );
 
         self.scene.as_mut().unwrap().update(
-            app.camera.position,
+            *app.camera.position(),
             projection,
             app.camera.view_matrix(),
             app.delta_time,

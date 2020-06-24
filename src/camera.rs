@@ -12,9 +12,9 @@ pub enum CameraDirection {
 }
 
 pub struct FreeCamera {
-    pub position: glm::Vec3,
+    position: glm::Vec3,
     right: glm::Vec3,
-    pub front: glm::Vec3,
+    front: glm::Vec3,
     up: glm::Vec3,
     world_up: glm::Vec3,
     speed: f32,
@@ -133,5 +133,13 @@ impl FreeCamera {
 
         let offset = input.mouse.offset_from_center;
         self.process_mouse_movement(offset.x, offset.y);
+    }
+
+    pub fn position(&self) -> &glm::Vec3 {
+        &self.position
+    }
+
+    pub fn front(&self) -> &glm::Vec3 {
+        &self.front
     }
 }
