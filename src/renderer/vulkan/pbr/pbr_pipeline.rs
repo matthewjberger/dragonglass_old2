@@ -827,7 +827,7 @@ impl PbrScene {
 
     pub fn update(
         &mut self,
-        camera_position: glm::Vec4,
+        camera_position: glm::Vec3,
         projection: glm::Mat4,
         view: glm::Mat4,
         delta_time: f64,
@@ -849,7 +849,12 @@ impl PbrScene {
         }
 
         let mut ubo = UniformBufferObject {
-            camera_position,
+            camera_position: glm::vec4(
+                camera_position.x,
+                camera_position.y,
+                camera_position.z,
+                1.0,
+            ),
             view,
             projection,
             joint_matrices: [glm::Mat4::identity(); UniformBufferObject::MAX_NUM_JOINTS],

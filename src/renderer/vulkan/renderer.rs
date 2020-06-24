@@ -144,7 +144,7 @@ impl VulkanRenderer {
             .command_pool
             .command_buffers()
             .iter()
-            .map(|x| *x)
+            .copied()
             .enumerate()
             .collect::<Vec<_>>();
 
@@ -175,13 +175,7 @@ impl VulkanRenderer {
         ];
 
         let context = self.context.clone();
-        let render_pass = self
-            .handles
-            .as_ref()
-            .unwrap()
-            .render_pass
-            .render_pass()
-            .clone();
+        let render_pass = self.handles.as_ref().unwrap().render_pass.render_pass();
         context.logical_device().record_command_buffer(
             command_buffer,
             vk::CommandBufferUsageFlags::SIMULTANEOUS_USE,
@@ -251,7 +245,6 @@ impl Renderer for VulkanRenderer {
     }
 
     fn update(&mut self, app: &App) {
-        let camera_position = glm::vec4(-10.0, -2.0, -3.0, 1.0);
         let projection = glm::perspective_zo(
             self.swapchain().properties().aspect_ratio(),
             90_f32.to_radians(),
@@ -259,16 +252,12 @@ impl Renderer for VulkanRenderer {
             1000_f32,
         );
 
-        let view = glm::look_at(
-            &camera_position.xyz(),
-            &glm::vec3(0.0, 0.0, 0.0),
-            &glm::vec3(0.0, 1.0, 0.0),
+        self.scene.as_mut().unwrap().update(
+            app.camera.position,
+            projection,
+            app.camera.view_matrix(),
+            app.delta_time,
         );
-
-        self.scene
-            .as_mut()
-            .unwrap()
-            .update(camera_position, projection, view, app.delta_time);
     }
 
     fn render(&mut self, app: &App) {

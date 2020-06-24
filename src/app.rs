@@ -1,4 +1,7 @@
-use crate::renderer::{Backend, Renderer};
+use crate::{
+    camera::FreeCamera,
+    renderer::{Backend, Renderer},
+};
 use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
@@ -50,6 +53,9 @@ pub enum Error {
 
     #[snafu(display("Failed to create renderer: {}", source))]
     CreateRenderer { source: crate::renderer::Error },
+
+    #[snafu(display("Failed to center the cursor: {}", source))]
+    CenterCursor { source: winit::error::ExternalError },
 }
 
 pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
@@ -99,6 +105,7 @@ pub struct App {
     pub window_dimensions: glm::Vec2,
     pub input: Input,
     pub delta_time: f64,
+    pub camera: FreeCamera,
 }
 
 impl App {
@@ -109,7 +116,6 @@ impl App {
     pub fn run() -> Result<()> {
         Self::setup_logger()?;
 
-        let mut app = App::default();
         let settings = Self::load_settings()?;
 
         let event_loop = EventLoop::new();
@@ -121,6 +127,27 @@ impl App {
             ))
             .build(&event_loop)
             .context(CreateWindow)?;
+
+        let mut app = App::default();
+        app.window_dimensions = glm::vec2(
+            window.inner_size().width as _,
+            window.inner_size().height as _,
+        );
+
+        app.camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
+        app.camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
+
+        // Free camera setup. Hide, grab, and center cursor
+        {
+            window.set_cursor_visible(false);
+            window
+                .set_cursor_grab(true)
+                .expect("Failed to grab cursor!");
+
+            let center = app.window_center();
+            window.set_cursor_position(center).context(CenterCursor)?;
+            app.input.mouse.position = glm::vec2(center.x as _, center.y as _);
+        }
 
         let mut renderer =
             Renderer::create_backend(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
@@ -136,7 +163,11 @@ impl App {
                     app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
                         / 1_000_000_f64;
                     last_frame = Instant::now();
+                    app.camera.update(&app.input, app.delta_time as f32);
                     renderer.update(&app);
+
+                    // Center cursor for free camera
+                    let _ = window.set_cursor_position(app.window_center());
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
@@ -170,10 +201,7 @@ impl App {
                         let current_position = glm::vec2(position.x as _, position.y as _);
                         app.input.mouse.position = current_position;
                         app.input.mouse.position_delta = current_position - last_position;
-                        let center = PhysicalPosition::new(
-                            (app.window_dimensions.x / 2.0) as i32,
-                            (app.window_dimensions.y / 2.0) as i32,
-                        );
+                        let center = app.window_center();
                         app.input.mouse.offset_from_center = glm::vec2(
                             (center.x - position.x as i32) as _,
                             (center.y - position.y as i32) as _,
@@ -231,5 +259,12 @@ impl App {
             })?;
         let settings: Settings = config.try_into().context(DeserializeSettings)?;
         Ok(settings)
+    }
+
+    fn window_center(&self) -> PhysicalPosition<i32> {
+        PhysicalPosition::new(
+            (self.window_dimensions.x / 2.0) as i32,
+            (self.window_dimensions.y / 2.0) as i32,
+        )
     }
 }
