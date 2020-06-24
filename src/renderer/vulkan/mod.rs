@@ -6,4 +6,3 @@ mod pbr;
 mod render;
 mod renderer;
 mod resource;
-mod strategy;

@@ -173,39 +173,44 @@ impl IrradianceMap {
                         device.cmd_set_scissor(command_buffer, 0, &scissors);
 
                         // Render scene from cube face's pov
-                        render_pass.record(command_buffer, &render_pass_begin_info, || {
-                            let push_block_irradiance = PushBlockIrradiance {
-                                mvp: glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1, 512.0)
-                                    * matrix,
-                                delta_phi: 2_f32.to_radians(),
-                                delta_theta: (0.5_f32 * std::f32::consts::PI) / 64_f32,
-                            };
+                        RenderPass::record(
+                            context.clone(),
+                            command_buffer,
+                            &render_pass_begin_info,
+                            || {
+                                let push_block_irradiance = PushBlockIrradiance {
+                                    mvp: glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1, 512.0)
+                                        * matrix,
+                                    delta_phi: 2_f32.to_radians(),
+                                    delta_theta: (0.5_f32 * std::f32::consts::PI) / 64_f32,
+                                };
 
-                            device.cmd_push_constants(
-                                command_buffer,
-                                pipeline.layout(),
-                                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                                0,
-                                byte_slice_from(&push_block_irradiance),
-                            );
+                                device.cmd_push_constants(
+                                    command_buffer,
+                                    pipeline.layout(),
+                                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                                    0,
+                                    byte_slice_from(&push_block_irradiance),
+                                );
 
-                            device.cmd_bind_pipeline(
-                                command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline.pipeline(),
-                            );
+                                device.cmd_bind_pipeline(
+                                    command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    pipeline.pipeline(),
+                                );
 
-                            device.cmd_bind_descriptor_sets(
-                                command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline.layout(),
-                                0,
-                                &[descriptor_set],
-                                &[],
-                            );
+                                device.cmd_bind_descriptor_sets(
+                                    command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    pipeline.layout(),
+                                    0,
+                                    &[descriptor_set],
+                                    &[],
+                                );
 
-                            unit_cube.draw(device, command_buffer);
-                        });
+                                unit_cube.draw(device, command_buffer);
+                            },
+                        );
                     })
                     .unwrap();
 

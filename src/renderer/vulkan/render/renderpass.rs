@@ -43,14 +43,14 @@ impl RenderPass {
     }
 
     pub fn record<T>(
-        &self,
+        context: Arc<VulkanContext>,
         command_buffer: vk::CommandBuffer,
         render_pass_begin_info: &vk::RenderPassBeginInfo,
         mut action: T,
     ) where
         T: FnMut(),
     {
-        let device = self.context.logical_device().logical_device();
+        let device = context.logical_device().logical_device();
         unsafe {
             device.cmd_begin_render_pass(
                 command_buffer,
