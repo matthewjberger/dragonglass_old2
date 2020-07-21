@@ -15,6 +15,7 @@ pub fn create_skybox_pipeline(
     context: Arc<VulkanContext>,
     shader_cache: &mut ShaderCache,
     render_pass: Arc<RenderPass>,
+    samples: vk::SampleCountFlags,
 ) -> RenderPipeline {
     let descriptions = UnitCube::vertex_input_descriptions();
     let attributes = UnitCube::vertex_attributes();
@@ -39,7 +40,7 @@ pub fn create_skybox_pipeline(
         .descriptor_set_layout(descriptor_set_layout)
         .shader_set(shader_set)
         .sample_shading_enabled(true)
-        .rasterization_samples(context.max_usable_samples())
+        .rasterization_samples(samples)
         .depth_test_enabled(false)
         .depth_write_enabled(false)
         .cull_mode(vk::CullModeFlags::FRONT)

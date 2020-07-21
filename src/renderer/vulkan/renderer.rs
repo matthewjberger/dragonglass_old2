@@ -88,9 +88,13 @@ impl VulkanRenderer {
 
         let swapchain = Swapchain::new(context.clone(), dimensions).context(CreateSwapchain)?;
 
-        let handles =
-            ForwardRenderingHandles::new(context.clone(), &transient_command_pool, &swapchain)
-                .unwrap();
+        let handles = ForwardRenderingHandles::new(
+            context.clone(),
+            &transient_command_pool,
+            &swapchain,
+            vk::SampleCountFlags::TYPE_1,
+        )
+        .unwrap();
 
         let renderer = Self {
             context,
@@ -124,6 +128,7 @@ impl VulkanRenderer {
             self.context.clone(),
             &self.transient_command_pool,
             self.swapchain(),
+            vk::SampleCountFlags::TYPE_1,
         )
         .expect("Failed to create strategy handles");
         self.handles = Some(handles);
@@ -233,6 +238,7 @@ impl Renderer for VulkanRenderer {
             &mut self.shader_cache,
             render_pass,
             &asset_names,
+            vk::SampleCountFlags::TYPE_1,
         );
 
         self.command_pool
@@ -350,6 +356,7 @@ impl ForwardRenderingHandles {
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
         swapchain: &Swapchain,
+        samples: vk::SampleCountFlags,
     ) -> Result<Self> {
         let depth_format = context.determine_depth_format(
             vk::ImageTiling::OPTIMAL,
@@ -360,12 +367,13 @@ impl ForwardRenderingHandles {
             context.clone(),
             &swapchain.properties(),
             depth_format,
+            samples,
         ));
 
         let swapchain_extent = swapchain.properties().extent;
 
         let depth_texture =
-            Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
+            Self::create_depth_texture(context.clone(), swapchain_extent, depth_format, samples);
 
         Self::transition_depth_texture(&command_pool, &depth_texture, depth_format);
 
@@ -374,7 +382,7 @@ impl ForwardRenderingHandles {
 
         let color_format = swapchain.properties().format.format;
         let color_texture =
-            Self::create_color_texture(context.clone(), swapchain_extent, color_format);
+            Self::create_color_texture(context.clone(), swapchain_extent, color_format, samples);
         Self::transition_color_texture(&command_pool, &color_texture, color_format);
         let color_texture_view =
             Self::create_color_texture_view(context.clone(), &color_texture, color_format);
@@ -403,12 +411,11 @@ impl ForwardRenderingHandles {
         context: Arc<VulkanContext>,
         swapchain_properties: &SwapchainProperties,
         depth_format: vk::Format,
+        samples: vk::SampleCountFlags,
     ) -> RenderPass {
-        let msaa_samples = context.max_usable_samples();
-
         let color_attachment_description = vk::AttachmentDescription::builder()
             .format(swapchain_properties.format.format)
-            .samples(msaa_samples)
+            .samples(samples)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
@@ -417,7 +424,7 @@ impl ForwardRenderingHandles {
 
         let depth_attachment_description = vk::AttachmentDescription::builder()
             .format(depth_format)
-            .samples(msaa_samples)
+            .samples(samples)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
@@ -523,6 +530,7 @@ impl ForwardRenderingHandles {
         context: Arc<VulkanContext>,
         swapchain_extent: vk::Extent2D,
         depth_format: vk::Format,
+        samples: vk::SampleCountFlags,
     ) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
@@ -538,7 +546,7 @@ impl ForwardRenderingHandles {
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(context.max_usable_samples())
+            .samples(samples)
             .flags(vk::ImageCreateFlags::empty())
             .build();
 
@@ -621,6 +629,7 @@ impl ForwardRenderingHandles {
         context: Arc<VulkanContext>,
         swapchain_extent: vk::Extent2D,
         color_format: vk::Format,
+        samples: vk::SampleCountFlags,
     ) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
@@ -638,7 +647,7 @@ impl ForwardRenderingHandles {
                 vk::ImageUsageFlags::TRANSIENT_ATTACHMENT | vk::ImageUsageFlags::COLOR_ATTACHMENT,
             )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(context.max_usable_samples())
+            .samples(samples)
             .flags(vk::ImageCreateFlags::empty())
             .build();
 

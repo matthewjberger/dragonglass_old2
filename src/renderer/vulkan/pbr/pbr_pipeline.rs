@@ -609,6 +609,7 @@ impl PbrScene {
         shader_cache: &mut ShaderCache,
         render_pass: Arc<RenderPass>,
         asset_names: &[&str],
+        samples: vk::SampleCountFlags,
     ) -> Self {
         let environment_maps = EnvironmentMapSet::new(context.clone(), command_pool, shader_cache);
 
@@ -664,7 +665,7 @@ impl PbrScene {
             assets,
         };
 
-        pbr_scene_data.recreate_pipelines(shader_cache, render_pass);
+        pbr_scene_data.recreate_pipelines(shader_cache, render_pass, samples);
         pbr_scene_data
     }
 
@@ -672,6 +673,7 @@ impl PbrScene {
         &mut self,
         shader_cache: &mut ShaderCache,
         render_pass: Arc<RenderPass>,
+        samples: vk::SampleCountFlags,
     ) {
         let descriptions = GltfAsset::create_vertex_input_descriptions();
         let attributes = GltfAsset::create_vertex_attributes();
@@ -702,7 +704,7 @@ impl PbrScene {
             .vertex_state_info(vertex_state_info)
             .descriptor_set_layout(descriptor_set_layout)
             .shader_set(shader_set)
-            .rasterization_samples(self.context.max_usable_samples())
+            .rasterization_samples(samples)
             .sample_shading_enabled(true)
             .push_constant_range(push_constant_range)
             .build()
@@ -719,6 +721,7 @@ impl PbrScene {
             self.context.clone(),
             shader_cache,
             render_pass,
+            vk::SampleCountFlags::TYPE_1,
         ));
     }
 
