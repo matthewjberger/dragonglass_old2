@@ -133,9 +133,6 @@ impl VulkanRenderer {
         .expect("Failed to create strategy handles");
         self.handles = Some(handles);
 
-        let extent = self.swapchain().properties().extent;
-        self.record_all_command_buffers(&extent);
-
         Ok(())
     }
 
@@ -245,9 +242,6 @@ impl Renderer for VulkanRenderer {
             .allocate_command_buffers(self.handles.as_ref().unwrap().framebuffers.len() as _)
             .unwrap();
         self.scene = Some(scene_data);
-
-        let extent = self.swapchain().properties().extent;
-        self.record_all_command_buffers(&extent);
     }
 
     fn update(&mut self, app: &App) {
@@ -308,6 +302,9 @@ impl Renderer for VulkanRenderer {
             .reset_fence(&current_frame_synchronization);
 
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+
+        let extent = self.swapchain().properties().extent;
+        self.record_all_command_buffers(&extent);
 
         self.command_pool
             .submit_command_buffer(
