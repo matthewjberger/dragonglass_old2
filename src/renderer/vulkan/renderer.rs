@@ -374,16 +374,12 @@ impl ForwardRenderingHandles {
 
         let depth_texture =
             Self::create_depth_texture(context.clone(), swapchain_extent, depth_format, samples);
-
-        Self::transition_depth_texture(&command_pool, &depth_texture, depth_format);
-
         let depth_texture_view =
             Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
 
         let color_format = swapchain.properties().format.format;
         let color_texture =
             Self::create_color_texture(context.clone(), swapchain_extent, color_format, samples);
-        Self::transition_color_texture(&command_pool, &color_texture, color_format);
         let color_texture_view =
             Self::create_color_texture_view(context.clone(), &color_texture, color_format);
 
@@ -475,17 +471,30 @@ impl ForwardRenderingHandles {
             .build();
         let subpass_descriptions = [subpass_description];
 
-        let subpass_dependency = vk::SubpassDependency::builder()
-            .src_subpass(vk::SUBPASS_EXTERNAL)
-            .dst_subpass(0)
-            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .dst_access_mask(
-                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            )
-            .build();
-        let subpass_dependencies = [subpass_dependency];
+        let subpass_dependencies = [
+            vk::SubpassDependency::builder()
+                .src_subpass(vk::SUBPASS_EXTERNAL)
+                .dst_subpass(0)
+                .src_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .src_access_mask(vk::AccessFlags::MEMORY_READ)
+                .dst_access_mask(
+                    vk::AccessFlags::COLOR_ATTACHMENT_READ
+                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                )
+                .build(),
+            vk::SubpassDependency::builder()
+                .src_subpass(0)
+                .dst_subpass(vk::SUBPASS_EXTERNAL)
+                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .dst_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                .src_access_mask(
+                    vk::AccessFlags::COLOR_ATTACHMENT_READ
+                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                )
+                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                .build(),
+        ];
 
         let create_info = vk::RenderPassCreateInfo::builder()
             .attachments(&attachment_descriptions)
@@ -557,48 +566,6 @@ impl ForwardRenderingHandles {
         Texture::new(context, &image_allocation_create_info, &image_create_info).unwrap()
     }
 
-    fn transition_depth_texture(
-        command_pool: &CommandPool,
-        depth_texture: &Texture,
-        depth_format: vk::Format,
-    ) {
-        let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
-        let has_stencil_component = depth_format == vk::Format::D32_SFLOAT_S8_UINT
-            || depth_format == vk::Format::D24_UNORM_S8_UINT;
-
-        if has_stencil_component {
-            aspect_mask |= vk::ImageAspectFlags::STENCIL;
-        }
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(depth_texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(
-                vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            )
-            .build();
-        let barriers = [barrier];
-
-        command_pool
-            .transition_image_layout(
-                &barriers,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-            )
-            .unwrap();
-    }
-
     fn create_depth_texture_view(
         context: Arc<VulkanContext>,
         depth_texture: &Texture,
@@ -656,47 +623,6 @@ impl ForwardRenderingHandles {
             ..Default::default()
         };
         Texture::new(context, &image_allocation_create_info, &image_create_info).unwrap()
-    }
-
-    fn transition_color_texture(
-        command_pool: &CommandPool,
-        color_texture: &Texture,
-        color_format: vk::Format,
-    ) {
-        let mut aspect_mask = vk::ImageAspectFlags::COLOR;
-        let has_stencil_component = color_format == vk::Format::D32_SFLOAT_S8_UINT
-            || color_format == vk::Format::D24_UNORM_S8_UINT;
-
-        if has_stencil_component {
-            aspect_mask |= vk::ImageAspectFlags::STENCIL;
-        }
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(color_texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(
-                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            )
-            .build();
-        let barriers = [barrier];
-
-        command_pool
-            .transition_image_layout(
-                &barriers,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            )
-            .unwrap();
     }
 
     fn create_color_texture_view(
