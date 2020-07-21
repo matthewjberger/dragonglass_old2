@@ -391,6 +391,8 @@ dependencies = [
  "glob",
  "gltf",
  "image",
+ "imgui",
+ "imgui-winit-support",
  "log",
  "nalgebra",
  "nalgebra-glm",
@@ -558,6 +560,37 @@ dependencies = [
  "png",
  "scoped_threadpool",
  "tiff",
+]
+
+[[package]]
+name = "imgui"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fdb2bcc7e498e78137ce28705ae836d69e36ee2eac89d0d926cfabfcf550570"
+dependencies = [
+ "bitflags",
+ "imgui-sys",
+ "lazy_static",
+ "parking_lot",
+]
+
+[[package]]
+name = "imgui-sys"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72be9671d64dd0ed26bb708cd10060a431262ac90ae70cf7c5912feefe6849da"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "imgui-winit-support"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f98171c35263e3eb0dfb66cb876e3efdb788d777c1b613c7d2592303d1276bb5"
+dependencies = [
+ "imgui",
+ "winit",
 ]
 
 [[package]]

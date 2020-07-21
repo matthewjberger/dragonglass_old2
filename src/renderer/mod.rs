@@ -2,6 +2,7 @@ mod vulkan;
 
 use crate::renderer::vulkan::VulkanRenderer;
 use crate::App;
+use imgui::{Context, DrawData};
 use snafu::{ResultExt, Snafu};
 use winit::window::Window;
 
@@ -22,9 +23,9 @@ pub enum Backend {
 }
 
 pub trait Renderer {
-    fn initialize(&mut self, app: &App);
+    fn initialize(&mut self, app: &App, imgui: &mut Context);
     fn update(&mut self, app: &App);
-    fn render(&mut self, app: &App);
+    fn render(&mut self, app: &App, draw_data: &DrawData);
 }
 
 impl dyn Renderer {

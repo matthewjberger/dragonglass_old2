@@ -10,6 +10,8 @@ derive_builder = "0.9.0"
 glob = "0.3.0"
 gltf = { version = "0.15.2", features = ["names"] }
 image = "0.23.4"
+imgui = "0.4.0"
+imgui-winit-support = "0.4"
 log = "0.4.8"
 nalgebra = "0.21.0"
 nalgebra-glm = "0.7.0"

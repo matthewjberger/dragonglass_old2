@@ -2,6 +2,8 @@ use crate::{
     camera::{FreeCamera, OrbitalCamera},
     renderer::{Backend, Renderer},
 };
+use imgui::*;
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
@@ -16,7 +18,7 @@ use winit::{
         WindowEvent,
     },
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -138,15 +140,35 @@ impl App {
 
         app.setup_camera(&window)?;
 
+        // IMGUI
+        let mut imgui = Context::create();
+        imgui.set_ini_filename(None);
+
+        let mut platform = WinitPlatform::init(&mut imgui);
+
+        let hidpi_factor = platform.hidpi_factor();
+        let font_size = (13.0 * hidpi_factor) as f32;
+        imgui.fonts().add_font(&[FontSource::DefaultFontData {
+            config: Some(FontConfig {
+                size_pixels: font_size,
+                ..FontConfig::default()
+            }),
+        }]);
+        imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+        platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
+
         let mut renderer =
             Renderer::create_backend(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
 
-        renderer.initialize(&app);
+        renderer.initialize(&app, &mut imgui);
 
         let mut last_frame = Instant::now();
         let mut cursor_moved = false;
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
+
+            platform.handle_event(imgui.io_mut(), &window, &event);
+
             match event {
                 Event::NewEvents { .. } => {
                     app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
@@ -212,15 +234,34 @@ impl App {
                     _ => {}
                 },
                 Event::MainEventsCleared => {
+                    platform
+                        .prepare_frame(imgui.io_mut(), &window)
+                        .expect("Failed to prepare frame");
+
+                    let ui = imgui.frame();
+
+                    Window::new(im_str!("Hello world"))
+                        .size([300.0, 100.0], Condition::FirstUseEver)
+                        .build(&ui, || {
+                            ui.text(im_str!("Hello world!"));
+                            ui.text(im_str!("This...is...imgui-rs!"));
+                            ui.separator();
+                            let mouse_pos = ui.io().mouse_pos;
+                            ui.text(format!(
+                                "Mouse Position: ({:.1},{:.1})",
+                                mouse_pos[0], mouse_pos[1]
+                            ));
+                        });
+
+                    platform.prepare_render(&ui, &window);
+                    let draw_data = ui.render();
+
+                    renderer.render(&app, &draw_data);
+
                     if !cursor_moved {
                         app.input.mouse.position_delta = glm::vec2(0.0, 0.0);
                     }
                     cursor_moved = false;
-
-                    window.request_redraw();
-                }
-                Event::RedrawRequested(_) => {
-                    renderer.render(&app);
                 }
                 _ => {}
             }
@@ -260,7 +301,7 @@ impl App {
         )
     }
 
-    fn setup_camera(&mut self, window: &Window) -> Result<()> {
+    fn setup_camera(&mut self, window: &winit::window::Window) -> Result<()> {
         if self.using_free_camera {
             self.free_camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
             self.free_camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
@@ -290,7 +331,7 @@ impl App {
         }
     }
 
-    fn reset_controls(&mut self, window: &mut Window) {
+    fn reset_controls(&mut self, window: &mut winit::window::Window) {
         if self.using_free_camera {
             // Center cursor for free camera
             let _ = window.set_cursor_position(self.window_center());

@@ -46,6 +46,9 @@ pub struct RenderPipelineSettings {
 
     #[builder(default = "vk::CullModeFlags::NONE")]
     pub cull_mode: vk::CullModeFlags,
+
+    #[builder(default = "vk::FrontFace::COUNTER_CLOCKWISE")]
+    pub front_face: vk::FrontFace,
 }
 
 pub struct RenderPipeline {
@@ -76,7 +79,7 @@ impl RenderPipeline {
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(settings.cull_mode)
-            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            .front_face(settings.front_face)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)

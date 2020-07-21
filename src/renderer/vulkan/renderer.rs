@@ -10,8 +10,12 @@ use crate::renderer::vulkan::{
         CommandPool, ShaderCache,
     },
 };
-use crate::{app::App, renderer::Renderer};
+use crate::{
+    app::App,
+    renderer::{vulkan::gui::GuiRenderer, Renderer},
+};
 use ash::vk;
+use imgui::{Context, DrawData};
 use log::warn;
 use nalgebra_glm as glm;
 use snafu::{ResultExt, Snafu};
@@ -64,6 +68,7 @@ pub struct VulkanRenderer {
     current_frame: usize,
     scene: Option<PbrScene>,
     shader_cache: ShaderCache,
+    gui_renderer: Option<GuiRenderer>,
 }
 
 impl VulkanRenderer {
@@ -106,12 +111,17 @@ impl VulkanRenderer {
             current_frame: 0,
             scene: None,
             shader_cache: ShaderCache::default(),
+            gui_renderer: None,
         };
 
         Ok(renderer)
     }
 
-    fn recreate_swapchain(&mut self, window_dimensions: &glm::Vec2) -> Result<()> {
+    fn recreate_swapchain(
+        &mut self,
+        window_dimensions: &glm::Vec2,
+        draw_data: &DrawData,
+    ) -> Result<()> {
         self.context.logical_device().wait_idle();
 
         self.swapchain = None;
@@ -133,6 +143,9 @@ impl VulkanRenderer {
         .expect("Failed to create strategy handles");
         self.handles = Some(handles);
 
+        let extent = self.swapchain().properties().extent;
+        self.record_all_command_buffers(&extent, draw_data);
+
         Ok(())
     }
 
@@ -141,7 +154,7 @@ impl VulkanRenderer {
         self.swapchain.as_ref().expect("Failed to get swapchain!")
     }
 
-    fn record_all_command_buffers(&mut self, extent: &vk::Extent2D) {
+    fn record_all_command_buffers(&mut self, extent: &vk::Extent2D, draw_data: &DrawData) {
         let command_buffers = self
             .command_pool
             .command_buffers()
@@ -152,7 +165,7 @@ impl VulkanRenderer {
 
         for (index, command_buffer) in command_buffers {
             let framebuffer = self.handles.as_ref().unwrap().framebuffers[index].framebuffer();
-            self.record_single_command_buffer(extent, framebuffer, command_buffer);
+            self.record_single_command_buffer(extent, framebuffer, command_buffer, draw_data);
         }
     }
 
@@ -161,6 +174,7 @@ impl VulkanRenderer {
         extent: &vk::Extent2D,
         framebuffer: vk::Framebuffer,
         command_buffer: vk::CommandBuffer,
+        draw_data: &DrawData,
     ) {
         let clear_values = [
             vk::ClearValue {
@@ -206,6 +220,16 @@ impl VulkanRenderer {
                         } else {
                             warn!("Scene not loaded!");
                         }
+
+                        if let Some(gui_renderer) = self.gui_renderer.as_mut() {
+                            gui_renderer.issue_commands(
+                                &self.transient_command_pool,
+                                command_buffer,
+                                draw_data,
+                            );
+                        } else {
+                            warn!("No gui available!");
+                        }
                     },
                 );
             },
@@ -220,7 +244,7 @@ impl Drop for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn initialize(&mut self, _: &App) {
+    fn initialize(&mut self, _: &App, mut imgui: &mut Context) {
         let asset_names = vec![
             "assets/models/DamagedHelmet.glb",
             "assets/models/CesiumMan.glb",
@@ -242,6 +266,17 @@ impl Renderer for VulkanRenderer {
             .allocate_command_buffers(self.handles.as_ref().unwrap().framebuffers.len() as _)
             .unwrap();
         self.scene = Some(scene_data);
+
+        let render_pass = self.handles.as_ref().unwrap().render_pass.clone();
+
+        let gui_renderer = GuiRenderer::new(
+            self.context.clone(),
+            &mut self.shader_cache,
+            render_pass,
+            &mut imgui,
+            &self.transient_command_pool,
+        );
+        self.gui_renderer = Some(gui_renderer);
     }
 
     fn update(&mut self, app: &App) {
@@ -272,7 +307,7 @@ impl Renderer for VulkanRenderer {
         );
     }
 
-    fn render(&mut self, app: &App) {
+    fn render(&mut self, app: &App, draw_data: &DrawData) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -289,7 +324,7 @@ impl Renderer for VulkanRenderer {
         let image_index = match image_index_result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&app.window_dimensions)
+                self.recreate_swapchain(&app.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
                 return;
             }
@@ -304,7 +339,7 @@ impl Renderer for VulkanRenderer {
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
         let extent = self.swapchain().properties().extent;
-        self.record_all_command_buffers(&extent);
+        self.record_all_command_buffers(&extent, draw_data);
 
         self.command_pool
             .submit_command_buffer(
@@ -323,11 +358,11 @@ impl Renderer for VulkanRenderer {
 
         match swapchain_presentation_result {
             Ok(is_suboptimal) if is_suboptimal => {
-                self.recreate_swapchain(&app.window_dimensions)
+                self.recreate_swapchain(&app.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&app.window_dimensions)
+                self.recreate_swapchain(&app.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),

@@ -137,7 +137,11 @@ pub struct GeometryBuffer {
 }
 
 impl GeometryBuffer {
-    pub fn new(command_pool: &CommandPool, vertices: &[f32], indices: Option<&[u32]>) -> Self {
+    pub fn new<T: Copy>(
+        command_pool: &CommandPool,
+        vertices: &[T],
+        indices: Option<&[u32]>,
+    ) -> Self {
         let vertex_buffer =
             Self::create_buffer(command_pool, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER);
 
