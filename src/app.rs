@@ -120,7 +120,7 @@ impl App {
 
         let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
 
-        renderer.initialize(&app, &mut imgui);
+        renderer.initialize(&mut imgui);
 
         let mut last_frame = Instant::now();
         let mut cursor_moved = false;
@@ -216,7 +216,7 @@ impl App {
                     platform.prepare_render(&ui, &window);
                     let draw_data = ui.render();
 
-                    renderer.render(&app, &draw_data);
+                    renderer.render(&app.window_dimensions, &draw_data);
 
                     if !cursor_moved {
                         app.input.mouse.position_delta = glm::vec2(0.0, 0.0);

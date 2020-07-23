@@ -4,6 +4,7 @@ use crate::renderer::vulkan::VulkanRenderer;
 use crate::App;
 use anyhow::Result;
 use imgui::{Context, DrawData};
+use nalgebra_glm as glm;
 use winit::window::Window;
 
 #[derive(Debug)]
@@ -12,9 +13,9 @@ pub enum Backend {
 }
 
 pub trait Renderer {
-    fn initialize(&mut self, app: &App, imgui: &mut Context);
+    fn initialize(&mut self, imgui: &mut Context);
     fn update(&mut self, app: &App);
-    fn render(&mut self, app: &App, draw_data: &DrawData);
+    fn render(&mut self, window_dimensions: &glm::Vec2, draw_data: &DrawData);
 }
 
 impl dyn Renderer {

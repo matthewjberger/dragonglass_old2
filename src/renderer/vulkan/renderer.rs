@@ -204,7 +204,7 @@ impl Drop for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn initialize(&mut self, _: &App, mut imgui: &mut Context) {
+    fn initialize(&mut self, mut imgui: &mut Context) {
         let asset_names = vec![
             "assets/models/DamagedHelmet.glb",
             "assets/models/CesiumMan.glb",
@@ -267,7 +267,7 @@ impl Renderer for VulkanRenderer {
         );
     }
 
-    fn render(&mut self, app: &App, draw_data: &DrawData) {
+    fn render(&mut self, window_dimensions: &glm::Vec2, draw_data: &DrawData) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -284,7 +284,7 @@ impl Renderer for VulkanRenderer {
         let image_index = match image_index_result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&app.window_dimensions, draw_data)
+                self.recreate_swapchain(&window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
                 return;
             }
@@ -318,11 +318,11 @@ impl Renderer for VulkanRenderer {
 
         match swapchain_presentation_result {
             Ok(is_suboptimal) if is_suboptimal => {
-                self.recreate_swapchain(&app.window_dimensions, draw_data)
+                self.recreate_swapchain(&window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&app.window_dimensions, draw_data)
+                self.recreate_swapchain(&window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),
