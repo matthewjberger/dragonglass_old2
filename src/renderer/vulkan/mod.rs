@@ -1,4 +1,4 @@
-pub use renderer::{Error, VulkanRenderer};
+pub use renderer::VulkanRenderer;
 
 mod asset;
 mod core;

@@ -1,16 +1,7 @@
 use crate::renderer::vulkan::core::VulkanContext;
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create descriptor set layout: {}", source))]
-    CreateDescriptorSetLayout { source: ash::vk::Result },
-}
 
 pub struct DescriptorSetLayout {
     layout: vk::DescriptorSetLayout,
@@ -27,8 +18,7 @@ impl DescriptorSetLayout {
                 .logical_device()
                 .logical_device()
                 .create_descriptor_set_layout(&create_info, None)
-        }
-        .context(CreateDescriptorSetLayout {})?;
+        }?;
 
         let descriptor_set_layout = DescriptorSetLayout { layout, context };
 

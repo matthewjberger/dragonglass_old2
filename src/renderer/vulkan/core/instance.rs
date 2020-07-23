@@ -1,31 +1,11 @@
 use crate::renderer::vulkan::core::{surface_extension_names, DebugLayer, LayerNameVec};
+use anyhow::Result;
 use ash::{
     extensions::ext::DebugUtils,
     version::{EntryV1_0, InstanceV1_0},
     vk::{self, make_version},
 };
-use snafu::ResultExt;
 use std::ffi::{CStr, CString};
-
-use snafu::Snafu;
-
-type Result<T, E = InstanceError> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum InstanceError {
-    #[snafu(display("Failed to create entry: {}", source))]
-    EntryLoading { source: ash::LoadingError },
-
-    #[snafu(display("Failed to create instance: {}", source))]
-    InstanceCreation { source: ash::InstanceError },
-
-    #[snafu(display("Failed to create a c-string from the application name: {}", source))]
-    AppNameCreation { source: std::ffi::NulError },
-
-    #[snafu(display("Failed to create a c-string from the engine name: {}", source))]
-    EngineNameCreation { source: std::ffi::NulError },
-}
 
 trait ApplicationDescription {
     const APPLICATION_NAME: &'static str;
@@ -50,7 +30,7 @@ pub struct Instance {
 
 impl Instance {
     pub fn new() -> Result<Self> {
-        let entry = ash::Entry::new().context(EntryLoading)?;
+        let entry = ash::Entry::new()?;
         Self::check_required_layers_supported(&entry);
         let app_info = Self::build_application_creation_info()?;
         let instance_extensions = Self::required_instance_extension_names();
@@ -60,15 +40,11 @@ impl Instance {
             .application_info(&app_info)
             .enabled_extension_names(&instance_extensions)
             .enabled_layer_names(&layer_name_pointers);
-        let instance = unsafe {
-            entry
-                .create_instance(&instance_create_info, None)
-                .context(InstanceCreation)?
-        };
+        let instance = unsafe { entry.create_instance(&instance_create_info, None) }?;
 
         // TODO: List supported instance extensions
 
-        Ok(Instance { entry, instance })
+        Ok(Self { entry, instance })
     }
 
     pub fn entry(&self) -> &ash::Entry {
@@ -80,8 +56,8 @@ impl Instance {
     }
 
     fn build_application_creation_info() -> Result<vk::ApplicationInfo> {
-        let app_name = CString::new(Instance::APPLICATION_NAME).context(AppNameCreation)?;
-        let engine_name = CString::new(Instance::ENGINE_NAME).context(EngineNameCreation)?;
+        let app_name = CString::new(Instance::APPLICATION_NAME)?;
+        let engine_name = CString::new(Instance::ENGINE_NAME)?;
         let app_info = vk::ApplicationInfo::builder()
             .application_name(&app_name)
             .engine_name(&engine_name)

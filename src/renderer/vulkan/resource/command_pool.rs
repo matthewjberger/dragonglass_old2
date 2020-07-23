@@ -2,44 +2,9 @@ use crate::renderer::vulkan::{
     core::{CurrentFrameSynchronization, Fence, VulkanContext},
     resource::Buffer,
 };
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create a command pool: {}", source))]
-    CreateCommandPool { source: ash::vk::Result },
-
-    #[snafu(display("Failed to allocate command buffers: {}", source))]
-    AllocateCommandBuffers { source: ash::vk::Result },
-
-    #[snafu(display("Failed to submit command buffer to queue {:?}: {}", queue, source))]
-    SubmitCommandBuffer {
-        source: ash::vk::Result,
-        queue: vk::Queue,
-    },
-
-    #[snafu(display("Failed to begin command buffer recording: {}", source))]
-    BeginCommandBufferRecording { source: ash::vk::Result },
-
-    #[snafu(display("Failed to end command buffer recording: {}", source))]
-    EndCommandBufferRecording { source: ash::vk::Result },
-
-    #[snafu(display("Failed to create one time fence: {}", source))]
-    CreateOneTimeFence {
-        source: crate::renderer::vulkan::core::sync::fence::Error,
-    },
-
-    #[snafu(display("Failed to wait for one-time fence: {}", source))]
-    WaitForOneTimeFence { source: ash::vk::Result },
-
-    #[snafu(display("Failed to wait for command buffer to be executed: {}", source))]
-    WaitForCommandBuffer { source: ash::vk::Result },
-}
 
 pub struct CommandPool {
     pool: vk::CommandPool,
@@ -58,8 +23,7 @@ impl CommandPool {
             context
                 .logical_device()
                 .logical_device()
-                .create_command_pool(&command_pool_info, None)
-                .context(CreateCommandPool {})?
+                .create_command_pool(&command_pool_info, None)?
         };
 
         let command_pool = CommandPool {
@@ -90,8 +54,7 @@ impl CommandPool {
             self.context
                 .logical_device()
                 .logical_device()
-                .allocate_command_buffers(&allocate_info)
-                .context(AllocateCommandBuffers {})?
+                .allocate_command_buffers(&allocate_info)?
         };
 
         Ok(())
@@ -176,8 +139,7 @@ impl CommandPool {
                     queue,
                     &submit_info_arr,
                     current_frame_synchronization.in_flight(),
-                )
-                .context(SubmitCommandBuffer { queue })?
+                )?
         }
         Ok(())
     }
@@ -262,7 +224,6 @@ impl CommandPool {
                     .logical_device()
                     .logical_device()
                     .allocate_command_buffers(&allocation_info)
-                    .context(AllocateCommandBuffers {})
             }
         }?[0];
         let command_buffers = [command_buffer];
@@ -282,25 +243,18 @@ impl CommandPool {
         let submit_info_arr = [submit_info];
 
         // Create a fence to ensure that the command buffer has finished executing
-        let fence = Fence::new(self.context.clone(), vk::FenceCreateFlags::empty())
-            .context(CreateOneTimeFence {})?;
+        let fence = Fence::new(self.context.clone(), vk::FenceCreateFlags::empty())?;
 
         let logical_device = self.context.logical_device().logical_device();
 
         unsafe {
             // Submit the command buffer
-            logical_device
-                .queue_submit(queue, &submit_info_arr, fence.fence())
-                .context(SubmitCommandBuffer { queue })?;
+            logical_device.queue_submit(queue, &submit_info_arr, fence.fence())?;
 
-            logical_device
-                .wait_for_fences(&[fence.fence()], true, 100_000_000_000)
-                .context(WaitForOneTimeFence {})?;
+            logical_device.wait_for_fences(&[fence.fence()], true, 100_000_000_000)?;
 
             // Wait for the command buffer to be executed
-            logical_device
-                .queue_wait_idle(queue)
-                .context(WaitForOneTimeFence {})?;
+            logical_device.queue_wait_idle(queue)?;
 
             // Free the command buffer
             logical_device.free_command_buffers(self.pool(), &command_buffers);

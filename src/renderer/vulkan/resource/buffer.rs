@@ -1,22 +1,7 @@
 use crate::renderer::vulkan::{core::VulkanContext, resource::CommandPool};
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create buffer: {}", source))]
-    CreateBuffer { source: vk_mem::error::Error },
-
-    #[snafu(display("Failed to map memory: {}", source))]
-    MapMemory { source: vk_mem::error::Error },
-
-    #[snafu(display("Failed to unmap memory: {}", source))]
-    UnmapMemory { source: vk_mem::error::Error },
-}
 
 pub struct Buffer {
     buffer: vk::Buffer,
@@ -33,8 +18,7 @@ impl Buffer {
     ) -> Result<Self> {
         let (buffer, allocation, allocation_info) = context
             .allocator()
-            .create_buffer(&buffer_create_info, &allocation_create_info)
-            .context(CreateBuffer {})?;
+            .create_buffer(&buffer_create_info, &allocation_create_info)?;
 
         let buffer = Self {
             buffer,
@@ -68,12 +52,13 @@ impl Buffer {
 
     pub fn upload_to_buffer<T>(&self, data: &[T], offset: usize) -> Result<()> {
         // TODO: Add checks for size of data being written
-        let data_pointer = self.map_memory().context(MapMemory {})?;
+        let data_pointer = self.map_memory()?;
         unsafe {
             data_pointer.add(offset);
             (data_pointer as *mut T).copy_from_nonoverlapping(data.as_ptr(), data.len());
         }
-        self.unmap_memory().context(UnmapMemory {})
+        self.unmap_memory()?;
+        Ok(())
     }
 
     pub fn upload_to_buffer_aligned<T: Copy>(
@@ -82,7 +67,7 @@ impl Buffer {
         offset: usize,
         alignment: vk::DeviceSize,
     ) -> Result<()> {
-        let data_pointer = self.map_memory().context(MapMemory {})?;
+        let data_pointer = self.map_memory()?;
         unsafe {
             let mut align = ash::util::Align::new(
                 data_pointer.add(offset) as _,
@@ -91,7 +76,8 @@ impl Buffer {
             );
             align.copy_from_slice(data);
         }
-        self.unmap_memory().context(UnmapMemory {})
+        self.unmap_memory()?;
+        Ok(())
     }
 
     pub fn map_memory(&self) -> vk_mem::error::Result<*mut u8> {

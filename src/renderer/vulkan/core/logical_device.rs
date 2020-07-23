@@ -1,19 +1,9 @@
 use crate::renderer::vulkan::core::{CurrentFrameSynchronization, Instance, PhysicalDevice};
+use anyhow::Result;
 use ash::{
     version::{DeviceV1_0, InstanceV1_0},
     vk,
 };
-
-use snafu::{ResultExt, Snafu};
-
-type Result<T, E = LogicalDeviceError> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum LogicalDeviceError {
-    #[snafu(display("Failed to create logical device: {}", source))]
-    LogicalDeviceCreation { source: vk::Result },
-}
 
 pub struct LogicalDevice {
     logical_device: ash::Device,
@@ -26,13 +16,14 @@ impl LogicalDevice {
         device_create_info: vk::DeviceCreateInfo,
     ) -> Result<Self> {
         let logical_device = unsafe {
-            instance
-                .instance()
-                .create_device(physical_device.physical_device(), &device_create_info, None)
-                .context(LogicalDeviceCreation)?
-        };
+            instance.instance().create_device(
+                physical_device.physical_device(),
+                &device_create_info,
+                None,
+            )
+        }?;
 
-        Ok(LogicalDevice { logical_device })
+        Ok(Self { logical_device })
     }
 
     pub fn logical_device(&self) -> &ash::Device {

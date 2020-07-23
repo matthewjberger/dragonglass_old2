@@ -1,30 +1,12 @@
-use crate::renderer::vulkan::core::{
-    DebugLayer, Instance, InstanceError, LogicalDevice, LogicalDeviceError, PhysicalDevice,
-    PhysicalDeviceError, Surface,
-};
+use crate::renderer::vulkan::core::{DebugLayer, Instance, LogicalDevice, PhysicalDevice, Surface};
+use anyhow::Result;
 use ash::{
     extensions::khr::Swapchain,
     version::{DeviceV1_0, InstanceV1_0},
     vk,
 };
-use snafu::{ResultExt, Snafu};
 use vk_mem::{Allocator, AllocatorCreateInfo};
 use winit::window::Window;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create instance for context: {}", source))]
-    InstanceCreation { source: InstanceError },
-
-    #[snafu(display("Failed to create physical device for context: {}", source))]
-    PhysicalDeviceCreation { source: PhysicalDeviceError },
-
-    #[snafu(display("Failed to create logical device for context: {}", source))]
-    LogicalDeviceCreation { source: LogicalDeviceError },
-}
 
 // The order the struct members here are declared in
 // is important because it determines the order
@@ -40,13 +22,11 @@ pub struct VulkanContext {
     instance: Instance,
 }
 
-// TODO: Replace constructor return value with a result
 impl VulkanContext {
     pub fn new(window: &Window) -> Result<Self> {
-        let instance = Instance::new().context(InstanceCreation)?;
+        let instance = Instance::new()?;
         let surface = Surface::new(&instance, window);
-        let physical_device =
-            PhysicalDevice::new(&instance, &surface).context(PhysicalDeviceCreation)?;
+        let physical_device = PhysicalDevice::new(&instance, &surface)?;
 
         let logical_device = Self::create_logical_device(&instance, &physical_device)?;
 
@@ -57,9 +37,9 @@ impl VulkanContext {
             ..Default::default()
         };
 
-        let allocator = Allocator::new(&allocator_create_info).expect("Allocator creation failed");
+        let allocator = Allocator::new(&allocator_create_info)?;
 
-        Ok(VulkanContext {
+        Ok(Self {
             allocator,
             instance,
             physical_device,
@@ -96,7 +76,6 @@ impl VulkanContext {
             &physical_device,
             device_create_info_builder.build(),
         )
-        .context(LogicalDeviceCreation)
     }
 
     pub fn max_usable_samples(&self) -> vk::SampleCountFlags {

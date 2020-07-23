@@ -2,25 +2,10 @@ use crate::renderer::vulkan::{
     core::{CurrentFrameSynchronization, VulkanContext},
     resource::image::ImageView,
 };
+use anyhow::Result;
 use ash::{extensions::khr::Swapchain as AshSwapchain, vk};
 use log::info;
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to get physical device surface capabilities: {}", source))]
-    GetSurfaceCapabilities { source: ash::vk::Result },
-
-    #[snafu(display("Failed to get physical device surface formats: {}", source))]
-    GetSurfaceFormats { source: ash::vk::Result },
-
-    #[snafu(display("Failed to get physical device surface present modes: {}", source))]
-    GetSurfacePresentModes { source: ash::vk::Result },
-}
 
 #[derive(Clone, Copy, Debug)]
 pub struct SwapchainProperties {
@@ -50,36 +35,27 @@ impl SwapchainSupportDetails {
     pub fn new(context: &VulkanContext) -> Result<Self> {
         // Get the surface capabilities
         let capabilities = unsafe {
-            context
-                .surface()
-                .get_physical_device_surface_capabilities(
-                    context.physical_device(),
-                    context.surface_khr(),
-                )
-                .context(GetSurfaceCapabilities {})?
+            context.surface().get_physical_device_surface_capabilities(
+                context.physical_device(),
+                context.surface_khr(),
+            )?
         };
 
         // Get the supported surface formats
         let formats = unsafe {
-            context
-                .surface()
-                .get_physical_device_surface_formats(
-                    context.physical_device(),
-                    context.surface_khr(),
-                )
-                .context(GetSurfaceFormats {})?
+            context.surface().get_physical_device_surface_formats(
+                context.physical_device(),
+                context.surface_khr(),
+            )?
         };
 
         // Get the supported present modes
         let present_modes = unsafe {
-            context
-                .surface()
-                .get_physical_device_surface_present_modes(
-                    context.physical_device(),
-                    context.surface_khr(),
-                )
-                .context(GetSurfacePresentModes {})?
-        };
+            context.surface().get_physical_device_surface_present_modes(
+                context.physical_device(),
+                context.surface_khr(),
+            )
+        }?;
 
         let details = Self {
             capabilities,

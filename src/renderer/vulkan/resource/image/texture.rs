@@ -5,109 +5,11 @@ use crate::renderer::vulkan::{
         Buffer, CommandPool,
     },
 };
+use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, vk};
 use gltf::image::Format;
 use image::{DynamicImage, ImageBuffer, Pixel, RgbImage};
-use snafu::{OptionExt, ResultExt, Snafu};
 use std::{iter, sync::Arc};
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to open HDR file {}: {}", path, source))]
-    OpenHdrFile {
-        source: std::io::Error,
-        path: String,
-    },
-
-    #[snafu(display("Failed to create HDR decoder: {}", source))]
-    CreateHdrDecoder { source: image::ImageError },
-
-    #[snafu(display("Failed to read HDR image: {}", source))]
-    ReadHdrImage { source: image::ImageError },
-
-    #[snafu(display("Failed to open image file {}: {}", path, source))]
-    OpenImageFile {
-        source: image::ImageError,
-        path: String,
-    },
-
-    #[snafu(display("Failed to create texture: {}", source))]
-    CreateTexture { source: vk_mem::error::Error },
-
-    #[snafu(display("Failed to create image buffer"))]
-    CreateImageBuffer,
-
-    #[snafu(display("Failed to image copy buffer: {}", source))]
-    CreateImageCopyBuffer {
-        source: crate::renderer::vulkan::resource::buffer::Error,
-    },
-
-    #[snafu(display("Failed to upload to image copy buffer: {}", source))]
-    UploadImageCopyBuffer {
-        source: crate::renderer::vulkan::resource::buffer::Error,
-    },
-
-    #[snafu(display("Failed to cubemap image copy buffer: {}", source))]
-    CreateCubemapImageCopyBuffer {
-        source: crate::renderer::vulkan::resource::buffer::Error,
-    },
-
-    #[snafu(display("Failed to upload to a cubemap image copy buffer: {}", source))]
-    UploadCubemapImageCopyBuffer {
-        source: crate::renderer::vulkan::resource::buffer::Error,
-    },
-
-    #[snafu(display("Failed to transition mipmap image layout to transfer: {}", source))]
-    TransitionMipLayoutToTransfer {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display(
-        "Failed to transition mipmap image layout to fragment shader: {}",
-        source
-    ))]
-    TransitionMipLayoutToFrag {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display("Failed to blit from source image to a mipmap: {}", source))]
-    BlitMipMap {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display("Failed to transition image layout: {}", source))]
-    TransitionImageLayout {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display("Failed to create image view: {}", source))]
-    CreateImageView {
-        source: crate::renderer::vulkan::resource::image::image_view::Error,
-    },
-
-    #[snafu(display("Failed to create sampler: {}", source))]
-    CreateSampler {
-        source: crate::renderer::vulkan::resource::sampler::Error,
-    },
-
-    #[snafu(display("Failed to create cubemap image view: {}", source))]
-    CreateCubemapImageView {
-        source: crate::renderer::vulkan::resource::image_view::Error,
-    },
-
-    #[snafu(display("Failed to create cubemap sampler: {}", source))]
-    CreateCubemapSampler {
-        source: crate::renderer::vulkan::resource::image::sampler::Error,
-    },
-
-    #[snafu(display("Failed to copy buffer to image: {}", source))]
-    CopyBufferToImage {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-}
 
 pub struct ImageLayoutTransition {
     pub old_layout: vk::ImageLayout,
@@ -138,15 +40,13 @@ impl TextureDescription {
     }
 
     pub fn from_hdr(path: &str) -> Result<Self> {
-        let file = std::fs::File::open(&path).context(OpenHdrFile {
-            path: path.to_string(),
-        })?;
+        let file =
+            std::fs::File::open(&path).with_context(|| format!("path: {}", path.to_string()))?;
 
-        let decoder = image::hdr::HdrDecoder::new(std::io::BufReader::new(file))
-            .context(CreateHdrDecoder {})?;
+        let decoder = image::hdr::HdrDecoder::new(std::io::BufReader::new(file))?;
 
         let metadata = decoder.metadata();
-        let decoded = decoder.read_image_hdr().context(ReadHdrImage {})?;
+        let decoded = decoder.read_image_hdr()?;
         let format = vk::Format::R32G32B32A32_SFLOAT;
         let width = metadata.width as u32;
         let height = metadata.height as u32;
@@ -171,9 +71,7 @@ impl TextureDescription {
     }
 
     pub fn from_file(path: &str) -> Result<Self> {
-        let image = image::open(path).context(OpenImageFile {
-            path: path.to_string(),
-        })?;
+        let image = image::open(path).with_context(|| format!("path: {}", path.to_string()))?;
         Self::from_image(&image)
     }
 
@@ -239,7 +137,7 @@ impl TextureDescription {
     fn attach_alpha_channel(&mut self) -> Result<()> {
         let image_buffer: RgbImage =
             ImageBuffer::from_raw(self.width, self.height, self.pixels.to_vec())
-                .context(CreateImageBuffer {})?;
+                .expect("Failed to load image rom raw pixels!");
 
         self.pixels = image_buffer
             .pixels()
@@ -282,8 +180,7 @@ impl Texture {
     ) -> Result<Self> {
         let (image, allocation, allocation_info) = context
             .allocator()
-            .create_image(&image_create_info, &allocation_create_info)
-            .context(CreateTexture {})?;
+            .create_image(&image_create_info, &allocation_create_info)?;
 
         let texture = Self {
             image,
@@ -324,12 +221,9 @@ impl Texture {
             self.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
-        )
-        .context(CreateImageCopyBuffer {})?;
+        )?;
 
-        buffer
-            .upload_to_buffer(&description.pixels, 0)
-            .context(UploadImageCopyBuffer {})?;
+        buffer.upload_to_buffer(&description.pixels, 0)?;
 
         let transition = ImageLayoutTransition {
             old_layout: vk::ImageLayout::UNDEFINED,
@@ -402,13 +296,11 @@ impl Texture {
                 .build();
             let barriers = [barrier];
 
-            command_pool
-                .transition_image_layout(
-                    &barriers,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
-                )
-                .context(TransitionMipLayoutToTransfer {})?;
+            command_pool.transition_image_layout(
+                &barriers,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::TRANSFER,
+            )?;
 
             let blit = vk::ImageBlit::builder()
                 .src_offsets([
@@ -442,8 +334,9 @@ impl Texture {
                 .build();
             let blits = [blit];
 
-            command_pool
-                .execute_command_once(self.context.graphics_queue(), |command_buffer| unsafe {
+            command_pool.execute_command_once(
+                self.context.graphics_queue(),
+                |command_buffer| unsafe {
                     self.context
                         .logical_device()
                         .logical_device()
@@ -456,8 +349,8 @@ impl Texture {
                             &blits,
                             vk::Filter::LINEAR,
                         )
-                })
-                .context(BlitMipMap {})?;
+                },
+            )?;
 
             let barrier = vk::ImageMemoryBarrier::builder()
                 .image(self.image())
@@ -477,13 +370,11 @@ impl Texture {
                 .build();
             let barriers = [barrier];
 
-            command_pool
-                .transition_image_layout(
-                    &barriers,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                )
-                .context(TransitionMipLayoutToFrag {})?;
+            command_pool.transition_image_layout(
+                &barriers,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            )?;
 
             mip_width = next_mip_width;
             mip_height = next_mip_height;
@@ -507,13 +398,11 @@ impl Texture {
             .build();
         let barriers = [barrier];
 
-        command_pool
-            .transition_image_layout(
-                &barriers,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-            )
-            .context(TransitionMipLayoutToFrag {})?;
+        command_pool.transition_image_layout(
+            &barriers,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+        )?;
 
         Ok(())
     }
@@ -542,13 +431,11 @@ impl Texture {
             .build();
         let barriers = [barrier];
 
-        command_pool
-            .transition_image_layout(
-                &barriers,
-                transition.src_stage_mask,
-                transition.dst_stage_mask,
-            )
-            .context(TransitionImageLayout {})?;
+        command_pool.transition_image_layout(
+            &barriers,
+            transition.src_stage_mask,
+            transition.dst_stage_mask,
+        )?;
 
         Ok(())
     }
@@ -642,12 +529,9 @@ impl Cubemap {
             self.texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
-        )
-        .context(CreateCubemapImageCopyBuffer {})?;
+        )?;
 
-        buffer
-            .upload_to_buffer(&pixels, 0)
-            .context(UploadCubemapImageCopyBuffer {})?;
+        buffer.upload_to_buffer(&pixels, 0)?;
 
         let transition = ImageLayoutTransition {
             old_layout: vk::ImageLayout::UNDEFINED,
@@ -686,9 +570,7 @@ impl Cubemap {
             })
             .collect::<Vec<_>>();
 
-        command_pool
-            .copy_buffer_to_image(buffer.buffer(), self.texture.image(), &regions)
-            .context(CopyBufferToImage {})?;
+        command_pool.copy_buffer_to_image(buffer.buffer(), self.texture.image(), &regions)?;
 
         let transition = ImageLayoutTransition {
             old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -760,7 +642,7 @@ impl Cubemap {
                 layer_count: 6,
             })
             .build();
-        let image_view = ImageView::new(context, create_info).context(CreateCubemapImageView {})?;
+        let image_view = ImageView::new(context, create_info)?;
         Ok(image_view)
     }
 
@@ -785,7 +667,7 @@ impl Cubemap {
             .min_lod(0.0)
             .max_lod(description.mip_levels as _)
             .build();
-        let sampler = Sampler::new(context, sampler_info).context(CreateSampler {})?;
+        let sampler = Sampler::new(context, sampler_info)?;
         Ok(sampler)
     }
 
@@ -813,13 +695,11 @@ impl Cubemap {
             .build();
         let barriers = [barrier];
 
-        command_pool
-            .transition_image_layout(
-                &barriers,
-                transition.src_stage_mask,
-                transition.dst_stage_mask,
-            )
-            .context(TransitionImageLayout {})?;
+        command_pool.transition_image_layout(
+            &barriers,
+            transition.src_stage_mask,
+            transition.dst_stage_mask,
+        )?;
 
         Ok(())
     }
@@ -911,7 +791,7 @@ impl TextureBundle {
                 layer_count: 1,
             })
             .build();
-        ImageView::new(context, create_info).context(CreateImageView {})
+        ImageView::new(context, create_info)
     }
 
     fn create_sampler(context: Arc<VulkanContext>, mip_levels: u32) -> Result<Sampler> {
@@ -932,6 +812,6 @@ impl TextureBundle {
             .min_lod(0.0)
             .max_lod(mip_levels as _)
             .build();
-        Sampler::new(context, sampler_info).context(CreateCubemapSampler {})
+        Sampler::new(context, sampler_info)
     }
 }

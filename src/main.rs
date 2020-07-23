@@ -2,8 +2,9 @@ mod app;
 mod camera;
 mod renderer;
 
-use app::{App, Error};
+use anyhow::Result;
+use app::App;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     App::run()
 }

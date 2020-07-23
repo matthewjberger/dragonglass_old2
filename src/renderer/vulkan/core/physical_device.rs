@@ -1,19 +1,8 @@
 use crate::renderer::vulkan::core::{DebugLayer, Instance, QueueFamilyIndexSet, Surface};
+use anyhow::Result;
 use ash::{version::InstanceV1_0, vk};
 use log::info;
-use snafu::{ResultExt, Snafu};
 use std::ffi::CStr;
-
-type Result<T, E = PhysicalDeviceError> = std::result::Result<T, E>;
-
-// TODO: Use the errors in this module
-#[derive(Debug, Snafu)]
-pub enum PhysicalDeviceError {
-    #[snafu(display("Failed to create the debug layer: {}", source))]
-    DebugLayerCreation {
-        source: crate::renderer::vulkan::core::DebugLayerError,
-    },
-}
 
 // The order of the struct fields
 // here matter because it determines drop order
@@ -32,7 +21,7 @@ impl PhysicalDevice {
                 .instance()
                 .get_physical_device_memory_properties(physical_device)
         };
-        let debug_layer = DebugLayer::new(instance).context(DebugLayerCreation)?;
+        let debug_layer = DebugLayer::new(instance)?;
 
         // TODO: This is called twice on the physical device that is deemed suitable.
         // reduce it to one call, storing the set on the first pass
@@ -40,7 +29,7 @@ impl PhysicalDevice {
             QueueFamilyIndexSet::new(instance.instance(), physical_device, surface)
                 .expect("Failed to create queue family index set!");
 
-        Ok(PhysicalDevice {
+        Ok(Self {
             physical_device,
             physical_device_memory_properties,
             _debug_layer: debug_layer,

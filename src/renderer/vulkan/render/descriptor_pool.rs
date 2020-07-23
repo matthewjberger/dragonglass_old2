@@ -1,19 +1,7 @@
 use crate::renderer::vulkan::core::VulkanContext;
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create descriptor pool: {}", source))]
-    CreateDescriptorPool { source: ash::vk::Result },
-
-    #[snafu(display("Failed to allocate descriptor sets: {}", source))]
-    AllocateDescriptorSets { source: ash::vk::Result },
-}
 
 pub struct DescriptorPool {
     pool: vk::DescriptorPool,
@@ -30,8 +18,7 @@ impl DescriptorPool {
                 .logical_device()
                 .logical_device()
                 .create_descriptor_pool(&pool_info, None)
-        }
-        .context(CreateDescriptorPool {})?;
+        }?;
 
         let descriptor_pool = Self { pool, context };
 
@@ -48,13 +35,13 @@ impl DescriptorPool {
             .descriptor_pool(self.pool)
             .set_layouts(&layouts)
             .build();
-        unsafe {
+        let descriptor_sets = unsafe {
             self.context
                 .logical_device()
                 .logical_device()
-                .allocate_descriptor_sets(&allocation_info)
-        }
-        .context(AllocateDescriptorSets {})
+                .allocate_descriptor_sets(&allocation_info)?
+        };
+        Ok(descriptor_sets)
     }
 }
 

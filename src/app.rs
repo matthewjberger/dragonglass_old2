@@ -2,13 +2,14 @@ use crate::{
     camera::{FreeCamera, OrbitalCamera},
     renderer::{Backend, Renderer},
 };
+use anyhow::{Context, Result};
+use imgui::Context as ImguiContext;
 use imgui::*;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
 use simplelog::*;
-use snafu::{ResultExt, Snafu};
 use std::collections::HashMap;
 use std::{fs::File, time::Instant};
 use winit::{
@@ -20,45 +21,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to set a logger: {}", source))]
-    SetLogger { source: log::SetLoggerError },
-
-    #[snafu(display("Failed to create a log file named '{}': {}", name, source))]
-    CreateLogFile {
-        name: String,
-        source: std::io::Error,
-    },
-
-    #[snafu(display("Failed to create a window: {}", source))]
-    CreateWindow { source: winit::error::OsError },
-
-    #[snafu(display("Failed to load a settings file named '{}': {}", name, source))]
-    LoadSettingsFile {
-        name: String,
-        source: config::ConfigError,
-    },
-
-    #[snafu(display("Failed to deserialize the settings file: {}", source))]
-    DeserializeSettings { source: config::ConfigError },
-
-    #[snafu(display("Failed to lookup the settings key '{}': {}", name, source))]
-    LookupKey {
-        name: String,
-        source: config::ConfigError,
-    },
-
-    #[snafu(display("Failed to create renderer: {}", source))]
-    CreateRenderer { source: crate::renderer::Error },
-
-    #[snafu(display("Failed to center the cursor: {}", source))]
-    CenterCursor { source: winit::error::ExternalError },
-}
 
 pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
 
@@ -129,8 +91,7 @@ impl App {
                 settings.width as u32,
                 settings.height as u32,
             ))
-            .build(&event_loop)
-            .context(CreateWindow)?;
+            .build(&event_loop)?;
 
         let mut app = App::default();
         app.window_dimensions = glm::vec2(
@@ -141,7 +102,7 @@ impl App {
         app.setup_camera(&window)?;
 
         // IMGUI
-        let mut imgui = Context::create();
+        let mut imgui = ImguiContext::create();
         imgui.set_ini_filename(None);
 
         let mut platform = WinitPlatform::init(&mut imgui);
@@ -157,8 +118,7 @@ impl App {
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
         platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
 
-        let mut renderer =
-            Renderer::create_backend(&Backend::Vulkan, &mut window).context(CreateRenderer)?;
+        let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
 
         renderer.initialize(&app, &mut imgui);
 
@@ -274,12 +234,11 @@ impl App {
             WriteLogger::new(
                 LevelFilter::Info,
                 Config::default(),
-                File::create(Self::LOG_FILE).context(CreateLogFile {
-                    name: Self::LOG_FILE.to_string(),
-                })?,
+                File::create(Self::LOG_FILE)
+                    .with_context(|| format!("log file path: {}", Self::LOG_FILE.to_string()))?,
             ),
-        ])
-        .context(SetLogger {})
+        ])?;
+        Ok(())
     }
 
     fn load_settings() -> Result<Settings> {
@@ -287,10 +246,8 @@ impl App {
         let mut config = config::Config::default();
         config
             .merge(config::File::with_name(Self::SETTINGS_FILE))
-            .context(LoadSettingsFile {
-                name: Self::SETTINGS_FILE.to_string(),
-            })?;
-        let settings: Settings = config.try_into().context(DeserializeSettings)?;
+            .with_context(|| format!("settings file path: {}", Self::SETTINGS_FILE.to_string()))?;
+        let settings: Settings = config.try_into()?;
         Ok(settings)
     }
 
@@ -311,7 +268,7 @@ impl App {
             let _ = window.set_cursor_grab(true);
 
             let center = self.window_center();
-            window.set_cursor_position(center).context(CenterCursor)?;
+            window.set_cursor_position(center)?;
             self.input.mouse.position = glm::vec2(center.x as _, center.y as _);
         } else {
             // orbital

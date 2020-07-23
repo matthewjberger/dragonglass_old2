@@ -1,16 +1,7 @@
 use crate::renderer::vulkan::core::VulkanContext;
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create sampler: {}", source))]
-    CreateSampler { source: ash::vk::Result },
-}
 
 pub struct Sampler {
     sampler: vk::Sampler,
@@ -24,10 +15,9 @@ impl Sampler {
                 .logical_device()
                 .logical_device()
                 .create_sampler(&create_info, None)
-        }
-        .context(CreateSampler {})?;
+        }?;
 
-        let sampler = Sampler { sampler, context };
+        let sampler = Self { sampler, context };
 
         Ok(sampler)
     }

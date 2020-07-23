@@ -1,31 +1,13 @@
 use crate::renderer::vulkan::core::VulkanContext;
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
-use snafu::{ResultExt, Snafu};
 use std::{
     collections::HashMap,
     ffi::CString,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to find shader file path '{}': {}", path, source))]
-    FindShaderFilePath {
-        path: String,
-        source: std::io::Error,
-    },
-
-    #[snafu(display("Failed to read SPIR-V shader source from bytes: {}", source))]
-    ReadShaderSourceBytes { source: std::io::Error },
-
-    #[snafu(display("Failed to create shader module: {}", source))]
-    CreateShaderModule { source: ash::vk::Result },
-}
 
 pub type ShaderMap = HashMap<String, Arc<Shader>>;
 
@@ -177,8 +159,8 @@ impl Shader {
     ) -> Result<Self> {
         let entry_point_name = CString::new(entry_point_name)
             .expect("Failed to create CString for shader entry point name!");
-        let mut shader_file = std::fs::File::open(path).context(FindShaderFilePath { path })?;
-        let shader_source = ash::util::read_spv(&mut shader_file).context(ReadShaderSourceBytes)?;
+        let mut shader_file = std::fs::File::open(path)?;
+        let shader_source = ash::util::read_spv(&mut shader_file)?;
         let shader_create_info = vk::ShaderModuleCreateInfo::builder()
             .code(&shader_source)
             .build();
@@ -186,8 +168,7 @@ impl Shader {
             context
                 .logical_device()
                 .logical_device()
-                .create_shader_module(&shader_create_info, None)
-                .context(CreateShaderModule)?
+                .create_shader_module(&shader_create_info, None)?
         };
 
         let state_info = vk::PipelineShaderStageCreateInfo::builder()

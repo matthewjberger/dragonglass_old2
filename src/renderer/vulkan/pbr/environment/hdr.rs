@@ -13,31 +13,10 @@ use crate::renderer::{
         },
     },
 };
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
-use snafu::Snafu;
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create render pipeline: {}", source))]
-    CreateRenderPipeline {
-        source: crate::renderer::vulkan::resource::shader::Error,
-    },
-
-    #[snafu(display("Failed to create shader: {}", source))]
-    CreateShader {
-        source: crate::renderer::vulkan::resource::shader::Error,
-    },
-
-    #[snafu(display("Failed to create shader set: {}", source))]
-    CreateShaderSet {
-        source: crate::renderer::vulkan::resource::shader::Error,
-    },
-}
 
 #[allow(dead_code)]
 struct PushBlockHdr {

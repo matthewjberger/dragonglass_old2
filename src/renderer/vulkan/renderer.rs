@@ -14,49 +14,13 @@ use crate::{
     app::App,
     renderer::{vulkan::gui::GuiRenderer, Renderer},
 };
+use anyhow::Result;
 use ash::vk;
 use imgui::{Context, DrawData};
 use log::warn;
 use nalgebra_glm as glm;
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
 use winit::window::Window;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create a Vulkan context: {}", source))]
-    CreateContext {
-        source: crate::renderer::vulkan::core::context::Error,
-    },
-
-    #[snafu(display("Failed to create a synchronization set: {}", source))]
-    CreateSynchronizationSet {
-        source: crate::renderer::vulkan::core::sync::synchronization_set::Error,
-    },
-
-    #[snafu(display("Failed to create a command pool: {}", source))]
-    CreateCommandPool {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display("Failed to create a transient command pool: {}", source))]
-    CreateTransientCommandPool {
-        source: crate::renderer::vulkan::resource::command_pool::Error,
-    },
-
-    #[snafu(display("Failed to create a swapchain: {}", source))]
-    CreateSwapchain {
-        source: crate::renderer::vulkan::render::swapchain::Error,
-    },
-
-    #[snafu(display("Failed to recreate a swapchain: {}", source))]
-    RecreateSwapchain {
-        source: crate::renderer::vulkan::render::swapchain::Error,
-    },
-}
 
 pub struct VulkanRenderer {
     context: Arc<VulkanContext>,
@@ -73,25 +37,22 @@ pub struct VulkanRenderer {
 
 impl VulkanRenderer {
     pub fn new(window: &mut Window) -> Result<Self> {
-        let context = Arc::new(VulkanContext::new(&window).context(CreateContext)?);
+        let context = Arc::new(VulkanContext::new(&window)?);
 
-        let synchronization_set =
-            SynchronizationSet::new(context.clone()).context(CreateSynchronizationSet)?;
+        let synchronization_set = SynchronizationSet::new(context.clone())?;
 
         let command_pool = CommandPool::new(
             context.clone(),
             vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
-        )
-        .context(CreateCommandPool)?;
+        )?;
 
         let transient_command_pool =
-            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT)
-                .context(CreateTransientCommandPool)?;
+            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT)?;
 
         let logical_size = window.inner_size();
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
-        let swapchain = Swapchain::new(context.clone(), dimensions).context(CreateSwapchain)?;
+        let swapchain = Swapchain::new(context.clone(), dimensions)?;
 
         let handles = ForwardRenderingHandles::new(
             context.clone(),
@@ -129,8 +90,7 @@ impl VulkanRenderer {
         let swapchain = Swapchain::new(
             self.context.clone(),
             [window_dimensions.x as _, window_dimensions.y as _],
-        )
-        .context(RecreateSwapchain)?;
+        )?;
         self.swapchain = Some(swapchain);
 
         self.handles = None;

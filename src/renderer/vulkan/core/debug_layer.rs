@@ -1,4 +1,5 @@
 use crate::renderer::vulkan::core::Instance;
+use anyhow::Result;
 use ash::{
     extensions::ext::DebugUtils,
     vk::{
@@ -6,25 +7,12 @@ use ash::{
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerEXT,
     },
 };
+use log::{debug, error, info, trace, warn};
 use std::{
     ffi::{CStr, CString},
     os::raw::c_void,
 };
 
-use log::{debug, error, info, trace, warn};
-
-use snafu::{ResultExt, Snafu};
-
-type Result<T, E = DebugLayerError> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum DebugLayerError {
-    #[snafu(display("Failed to create debug utils messenger: {:?}", source))]
-    DebugUtilsMessengerCreationFailed { source: vk::Result },
-}
-
-// TODO: Possibly rename this to DebugUtils
 pub struct DebugLayer {
     debug_utils: DebugUtils,
     debug_utils_messenger: DebugUtilsMessengerEXT,
@@ -43,12 +31,9 @@ impl DebugLayer {
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
             .pfn_user_callback(Some(vulkan_debug_callback))
             .build();
-        let debug_utils_messenger = unsafe {
-            debug_utils
-                .create_debug_utils_messenger(&create_info, None)
-                .context(DebugUtilsMessengerCreationFailed)?
-        };
-        Ok(Some(DebugLayer {
+        let debug_utils_messenger =
+            unsafe { debug_utils.create_debug_utils_messenger(&create_info, None) }?;
+        Ok(Some(Self {
             debug_utils,
             debug_utils_messenger,
         }))

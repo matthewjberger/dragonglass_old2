@@ -1,16 +1,7 @@
 use crate::renderer::vulkan::core::VulkanContext;
+use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
-use snafu::{ResultExt, Snafu};
 use std::sync::Arc;
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility = "pub(crate)")]
-pub enum Error {
-    #[snafu(display("Failed to create pipeline layout: {}", source))]
-    CreatePipelineLayout { source: ash::vk::Result },
-}
 
 pub struct PipelineLayout {
     layout: vk::PipelineLayout,
@@ -27,8 +18,7 @@ impl PipelineLayout {
                 .logical_device()
                 .logical_device()
                 .create_pipeline_layout(&create_info, None)
-        }
-        .context(CreatePipelineLayout {})?;
+        }?;
 
         let pipeline_layout = Self { layout, context };
 
