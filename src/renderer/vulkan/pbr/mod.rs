@@ -1,4 +1,4 @@
-pub use self::{environment::*, pbr_pipeline::*};
+pub use self::{environment::*, scene::*};
 
 pub mod environment;
-pub mod pbr_pipeline;
+pub mod scene;
