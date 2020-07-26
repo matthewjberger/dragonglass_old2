@@ -3,6 +3,7 @@ use crate::{
     gui::Gui,
     input::Input,
     renderer::{Backend, Renderer},
+    system::System,
 };
 use anyhow::{Context, Result};
 use legion::prelude::*;
@@ -10,10 +11,10 @@ use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
 use simplelog::*;
-use std::{fs::File, time::Instant};
+use std::fs::File;
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{Event, VirtualKeyCode, WindowEvent},
+    event::{Event, VirtualKeyCode},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -24,11 +25,9 @@ pub struct Settings {
     height: i64,
 }
 
-#[derive(Default)]
 pub struct App {
-    pub window_dimensions: glm::Vec2,
     pub input: Input,
-    pub delta_time: f64,
+    pub system: System,
     pub free_camera: FreeCamera,
     pub orbital_camera: OrbitalCamera,
     pub using_free_camera: bool,
@@ -38,6 +37,16 @@ impl App {
     pub const TITLE: &'static str = "Dragonglass - GLTF Model Viewer";
     pub const LOG_FILE: &'static str = "dragonglass.log";
     pub const SETTINGS_FILE: &'static str = "settings.toml";
+
+    pub fn new(window_dimensions: glm::Vec2) -> Self {
+        Self {
+            input: Input::default(),
+            system: System::new(),
+            free_camera: FreeCamera::default(),
+            orbital_camera: OrbitalCamera::default(),
+            using_free_camera: false,
+        }
+    }
 
     pub fn run() -> Result<()> {
         Self::setup_logger()?;
@@ -53,12 +62,12 @@ impl App {
             ))
             .build(&event_loop)?;
 
-        let mut app = App::default();
-        app.window_dimensions = glm::vec2(
+        let window_dimensions = glm::vec2(
             window.inner_size().width as _,
             window.inner_size().height as _,
         );
 
+        let mut app = App::new(window_dimensions);
         app.setup_camera(&window)?;
 
         let mut gui = Gui::new(&window);
@@ -72,13 +81,15 @@ impl App {
         //let mut schedule = Schedule::builder().add_system().flush().build();
         //schedule.execute();
 
-        let mut last_frame = Instant::now();
+        app.system = System::new();
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
-            gui.handle_event(&event, &window);
+            app.system.handle_event(&event);
 
-            app.input.handle_event(&event, app.window_center());
+            app.input.handle_event(&event, app.system.window_center());
+
+            gui.handle_event(&event, &window);
 
             if app.input.is_key_pressed(VirtualKeyCode::Escape) {
                 *control_flow = ControlFlow::Exit;
@@ -91,29 +102,18 @@ impl App {
 
             match event {
                 Event::NewEvents { .. } => {
-                    app.delta_time = (Instant::now().duration_since(last_frame).as_micros() as f64)
-                        / 1_000_000_f64;
-                    last_frame = Instant::now();
-
                     app.update_camera();
 
                     renderer.update(&app);
 
                     app.reset_controls(&mut window);
                 }
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::Resized(PhysicalSize { width, height }) => {
-                        app.window_dimensions = glm::vec2(width as f32, height as f32);
-                    }
-                    _ => {}
-                },
                 Event::MainEventsCleared => {
                     let draw_data = gui
                         .render_frame(&window)
                         .expect("Failed to render gui frame!");
 
-                    renderer.render(&app.window_dimensions, &draw_data);
+                    renderer.render(&app.system.window_dimensions, &draw_data);
                 }
                 _ => {}
             }
@@ -143,13 +143,6 @@ impl App {
         Ok(settings)
     }
 
-    fn window_center(&self) -> glm::Vec2 {
-        glm::vec2(
-            (self.window_dimensions.x / 2.0) as _,
-            (self.window_dimensions.y / 2.0) as _,
-        )
-    }
-
     fn setup_camera(&mut self, window: &winit::window::Window) -> Result<()> {
         if self.using_free_camera {
             self.free_camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
@@ -159,8 +152,8 @@ impl App {
             window.set_cursor_visible(false);
             let _ = window.set_cursor_grab(true);
 
-            let center = self.window_center();
-            window.set_cursor_position(PhysicalPosition::new(center.x as i32, center.y as i32))?;
+            let center = self.system.window_center_physical();
+            window.set_cursor_position(center)?;
             self.input.mouse.position = glm::vec2(center.x as _, center.y as _);
         } else {
             // orbital
@@ -173,19 +166,19 @@ impl App {
 
     fn update_camera(&mut self) {
         if self.using_free_camera {
-            self.free_camera.update(&self.input, self.delta_time as f32);
+            self.free_camera
+                .update(&self.input, self.system.delta_time as f32);
         } else {
             self.orbital_camera
-                .update(&self.input, self.delta_time as f32);
+                .update(&self.input, self.system.delta_time as f32);
         }
     }
 
     fn reset_controls(&mut self, window: &mut winit::window::Window) {
         if self.using_free_camera {
-            let center = self.window_center();
+            let center = self.system.window_center_physical();
             // Center cursor for free camera
-            let _ =
-                window.set_cursor_position(PhysicalPosition::new(center.x as i32, center.y as i32));
+            let _ = window.set_cursor_position(center);
         }
         self.input.mouse.wheel_delta = 0.0;
     }

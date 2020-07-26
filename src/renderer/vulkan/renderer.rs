@@ -263,7 +263,7 @@ impl Renderer for VulkanRenderer {
             camera_position,
             projection,
             view_matrix,
-            app.delta_time,
+            app.system.delta_time,
         );
     }
 
