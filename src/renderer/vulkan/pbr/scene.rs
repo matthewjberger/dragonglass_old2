@@ -1,28 +1,33 @@
-use crate::renderer::{
-    byte_slice_from,
-    vulkan::{
-        asset::{GltfAsset, Primitive},
-        core::VulkanContext,
-        pbr::environment::{
-            create_skybox_pipeline, Brdflut, HdrCubemap, IrradianceMap, PrefilterMap,
-            SkyboxPipelineData, SkyboxRenderer, SkyboxUniformBufferObject,
-        },
-        render::{
-            DescriptorPool, DescriptorSetLayout, GraphicsPipeline, RenderPass, RenderPipeline,
-            RenderPipelineSettingsBuilder,
-        },
-        resource::{
-            image::{DummyImage, TextureBundle},
-            Buffer, CommandPool, GeometryBuffer, ShaderCache, ShaderPathSetBuilder,
+use crate::{
+    camera::OrbitalCamera,
+    renderer::{
+        byte_slice_from,
+        vulkan::{
+            asset::{GltfAsset, Primitive},
+            core::VulkanContext,
+            pbr::environment::{
+                create_skybox_pipeline, Brdflut, HdrCubemap, IrradianceMap, PrefilterMap,
+                SkyboxPipelineData, SkyboxRenderer, SkyboxUniformBufferObject,
+            },
+            render::{
+                DescriptorPool, DescriptorSetLayout, GraphicsPipeline, RenderPass, RenderPipeline,
+                RenderPipelineSettingsBuilder,
+            },
+            resource::{
+                image::{DummyImage, TextureBundle},
+                Buffer, CommandPool, GeometryBuffer, ShaderCache, ShaderPathSetBuilder,
+            },
         },
     },
+    system::System,
 };
 use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
 use gltf::material::AlphaMode;
+use legion::prelude::*;
 use log::debug;
 use nalgebra_glm as glm;
-use std::{mem, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 pub struct PushConstantBlockMaterial {
     pub base_color_factor: glm::Vec4,
@@ -569,6 +574,57 @@ impl EnvironmentMapSet {
     }
 }
 
+#[derive(Default)]
+pub struct AssetCache {
+    pub cache: HashMap<String, GltfAsset>,
+}
+
+impl AssetCache {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        asset_names: &[String],
+        command_pool: &CommandPool,
+    ) -> Self {
+        let mut cache = HashMap::new();
+        for asset_name in asset_names {
+            let asset = GltfAsset::new(context.clone(), &command_pool, &asset_name);
+            cache.insert(asset_name.to_string(), asset);
+        }
+
+        Self { cache }
+    }
+
+    pub fn number_of_meshes(&self) -> usize {
+        self.cache.values().fold(0, |total_meshes, asset| {
+            total_meshes + asset.number_of_meshes
+        })
+    }
+
+    // FIXME: Consider storing the geometry buffer and textures inside the AssetCache object
+    pub fn create_geometry_buffer(&self, command_pool: &CommandPool) -> GeometryBuffer {
+        let assets = self.cache.values().collect::<Vec<_>>();
+
+        let vertices = assets
+            .iter()
+            .flat_map(|asset| asset.vertices.iter().copied())
+            .collect::<Vec<_>>();
+
+        let indices = assets
+            .iter()
+            .flat_map(|asset| asset.indices.iter().copied())
+            .collect::<Vec<_>>();
+
+        GeometryBuffer::new(&command_pool, &vertices, Some(&indices))
+    }
+
+    pub fn textures(&self) -> Vec<&TextureBundle> {
+        self.cache
+            .values()
+            .flat_map(|asset| &asset.textures)
+            .collect::<Vec<_>>()
+    }
+}
+
 pub struct PbrScene {
     context: Arc<VulkanContext>,
     asset_geometry_buffer: GeometryBuffer,
@@ -578,7 +634,7 @@ pub struct PbrScene {
     pbr_pipeline: Option<RenderPipeline>,
     pbr_pipeline_blend: Option<RenderPipeline>,
     pbr_pipeline_data: PbrPipelineData,
-    assets: Vec<GltfAsset>,
+    asset_cache: AssetCache,
 }
 
 impl PbrScene {
@@ -594,37 +650,14 @@ impl PbrScene {
         // FIXME: Cache loaded assets, can be manually cleared whenever necessary
         let environment_maps = EnvironmentMapSet::new(context.clone(), command_pool, shader_cache);
 
-        let assets = asset_names
-            .iter()
-            .map(|name| GltfAsset::new(context.clone(), &command_pool, &name))
-            .collect::<Vec<_>>();
-
-        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
-            total_meshes + asset.number_of_meshes
-        });
-
-        let vertices = assets
-            .iter()
-            .flat_map(|asset| asset.vertices.iter().copied())
-            .collect::<Vec<_>>();
-
-        let indices = assets
-            .iter()
-            .flat_map(|asset| asset.indices.iter().copied())
-            .collect::<Vec<_>>();
-
-        let asset_geometry_buffer = GeometryBuffer::new(&command_pool, &vertices, Some(&indices));
-
-        let textures = assets
-            .iter()
-            .flat_map(|asset| &asset.textures)
-            .collect::<Vec<_>>();
+        let asset_cache = AssetCache::new(context.clone(), asset_names, command_pool);
+        let asset_geometry_buffer = asset_cache.create_geometry_buffer(&command_pool);
 
         let pbr_pipeline_data = PbrPipelineData::new(
             context.clone(),
             &command_pool,
-            number_of_meshes,
-            &textures,
+            asset_cache.number_of_meshes(),
+            &asset_cache.textures(),
             &environment_maps,
         );
 
@@ -643,7 +676,7 @@ impl PbrScene {
             pbr_pipeline: None,
             pbr_pipeline_blend: None,
             pbr_pipeline_data,
-            assets,
+            asset_cache,
         };
 
         pbr_scene_data.recreate_pipelines(shader_cache, render_pass, samples);
@@ -784,7 +817,7 @@ impl PbrScene {
                 }
 
                 let mut offsets = GltfOffsets::default();
-                for asset in self.assets.iter() {
+                for asset in self.asset_cache.cache.values() {
                     if *alpha_mode == AlphaMode::Blend {
                         pbr_renderer_blended.draw_asset(
                             self.context.logical_device().logical_device(),
@@ -809,14 +842,19 @@ impl PbrScene {
             });
     }
 
-    pub fn update(
-        &mut self,
-        camera_position: glm::Vec3,
-        projection: glm::Mat4,
-        view: glm::Mat4,
-        delta_time: f64,
-    ) {
-        // TODO: Move this logic to components
+    pub fn update(&mut self, world: &World, resources: &Resources, projection: glm::Mat4) {
+        let camera = &<Read<OrbitalCamera>>::query()
+            .iter(world)
+            .collect::<Vec<_>>()[0];
+
+        let camera_position = camera.position();
+        let view = camera.view_matrix();
+
+        let system = resources
+            .get::<System>()
+            .expect("Failed to get system resource!");
+
+        // TODO: Move this logic to systems and state into components
         let skybox_ubo = SkyboxUniformBufferObject { view, projection };
         let skybox_ubos = [skybox_ubo];
         self.skybox_pipeline_data
@@ -824,9 +862,9 @@ impl PbrScene {
             .upload_to_buffer(&skybox_ubos, 0)
             .unwrap();
 
-        for asset in self.assets.iter_mut() {
+        for asset in self.asset_cache.cache.values_mut() {
             for animation in asset.animations.iter_mut() {
-                animation.time += 0.75 * delta_time as f32;
+                animation.time += 0.75 * system.delta_time as f32;
             }
 
             // Only animate first animation
@@ -849,7 +887,7 @@ impl PbrScene {
         let mut asset_transform = glm::Mat4::identity();
         let mut mesh_offset = 0;
         let mut joint_offset = 0;
-        for asset in self.assets.iter() {
+        for asset in self.asset_cache.cache.values() {
             asset.walk_mut(|node_index, graph| {
                 let global_transform =
                     GltfAsset::calculate_global_transform(node_index, graph);

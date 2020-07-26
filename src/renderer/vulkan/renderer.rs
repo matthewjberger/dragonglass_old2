@@ -1,5 +1,4 @@
 use crate::{
-    camera::OrbitalCamera,
     renderer::{
         vulkan::{
             core::{
@@ -238,7 +237,6 @@ impl Renderer for VulkanRenderer {
     }
 
     fn render(&mut self, world: &World, resources: &Resources, draw_data: &DrawData) {
-        // FIXME: Move this to the system struct
         let projection = glm::perspective_zo(
             self.swapchain().properties().aspect_ratio(),
             70_f32.to_radians(),
@@ -246,23 +244,15 @@ impl Renderer for VulkanRenderer {
             1000_f32,
         );
 
-        let camera = &<Read<OrbitalCamera>>::query()
-            .iter(world)
-            .collect::<Vec<_>>()[0];
-
-        let camera_position = camera.position();
-        let view_matrix = camera.view_matrix();
+        // FIXME: Move this to the system struct
+        self.scene
+            .as_mut()
+            .unwrap()
+            .update(world, resources, projection);
 
         let system = resources
-            .get_mut::<System>()
+            .get::<System>()
             .expect("Failed to get system resource!");
-
-        self.scene.as_mut().unwrap().update(
-            camera_position,
-            projection,
-            view_matrix,
-            system.delta_time,
-        );
 
         let current_frame_synchronization = self
             .synchronization_set
