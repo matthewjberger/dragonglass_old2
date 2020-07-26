@@ -1,4 +1,5 @@
-use crate::input::Input;
+use crate::{input::Input, system::System};
+use legion::prelude::*;
 use nalgebra_glm as glm;
 use winit::event::VirtualKeyCode;
 
@@ -67,7 +68,7 @@ impl FreeCamera {
         glm::look_at(&self.position, &target, &self.up)
     }
 
-    fn translate(&mut self, direction: CameraDirection, delta_time: f32) {
+    pub fn translate(&mut self, direction: CameraDirection, delta_time: f32) {
         let velocity = self.speed * delta_time;
         match direction {
             CameraDirection::Forward => self.position += self.front * velocity,
@@ -79,7 +80,7 @@ impl FreeCamera {
         };
     }
 
-    fn process_mouse_movement(&mut self, x_offset: f32, y_offset: f32) {
+    pub fn process_mouse_movement(&mut self, x_offset: f32, y_offset: f32) {
         let (x_offset, y_offset) = (x_offset * self.sensitivity, y_offset * self.sensitivity);
 
         self.yaw_degrees -= x_offset;
@@ -108,38 +109,47 @@ impl FreeCamera {
         self.up = self.right.cross(&self.front).normalize();
     }
 
-    pub fn update(&mut self, input: &Input, delta_time: f32) {
-        if input.is_key_pressed(VirtualKeyCode::W) {
-            self.translate(CameraDirection::Forward, delta_time);
-        }
-
-        if input.is_key_pressed(VirtualKeyCode::A) {
-            self.translate(CameraDirection::Left, delta_time);
-        }
-
-        if input.is_key_pressed(VirtualKeyCode::S) {
-            self.translate(CameraDirection::Backward, delta_time);
-        }
-
-        if input.is_key_pressed(VirtualKeyCode::D) {
-            self.translate(CameraDirection::Right, delta_time);
-        }
-
-        if input.is_key_pressed(VirtualKeyCode::LShift) {
-            self.translate(CameraDirection::Down, delta_time);
-        }
-
-        if input.is_key_pressed(VirtualKeyCode::Space) {
-            self.translate(CameraDirection::Up, delta_time);
-        }
-
-        let offset = input.mouse.offset_from_center;
-        self.process_mouse_movement(offset.x, offset.y);
-    }
-
     pub fn position(&self) -> &glm::Vec3 {
         &self.position
     }
+}
+
+pub fn fps_camera_controls_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("fps_camera_controls")
+        .read_resource::<Input>()
+        .read_resource::<System>()
+        .with_query(<Write<FreeCamera>>::query())
+        .build(move |_, world, (input, system), query| {
+            let delta_time = system.delta_time as f32;
+            for mut camera in query.iter_mut(world) {
+                if input.is_key_pressed(VirtualKeyCode::W) {
+                    camera.translate(CameraDirection::Forward, delta_time);
+                }
+
+                if input.is_key_pressed(VirtualKeyCode::A) {
+                    camera.translate(CameraDirection::Left, delta_time);
+                }
+
+                if input.is_key_pressed(VirtualKeyCode::S) {
+                    camera.translate(CameraDirection::Backward, delta_time);
+                }
+
+                if input.is_key_pressed(VirtualKeyCode::D) {
+                    camera.translate(CameraDirection::Right, delta_time);
+                }
+
+                if input.is_key_pressed(VirtualKeyCode::LShift) {
+                    camera.translate(CameraDirection::Down, delta_time);
+                }
+
+                if input.is_key_pressed(VirtualKeyCode::Space) {
+                    camera.translate(CameraDirection::Up, delta_time);
+                }
+
+                let offset = input.mouse.offset_from_center;
+                camera.process_mouse_movement(offset.x, offset.y);
+            }
+        })
 }
 
 pub struct OrbitalCamera {
@@ -170,13 +180,6 @@ impl OrbitalCamera {
         self.r -= r;
     }
 
-    pub fn update(&mut self, input: &Input, delta_time: f32) {
-        self.forward(input.mouse.wheel_delta * 0.3);
-        if input.mouse.is_left_clicked {
-            self.rotate(&(input.mouse.position_delta * delta_time));
-        }
-    }
-
     pub fn view_matrix(&self) -> glm::Mat4 {
         glm::look_at(
             &self.position(),
@@ -193,4 +196,20 @@ impl Default for OrbitalCamera {
             r: 5.0,
         }
     }
+}
+
+pub fn orbital_camera_controls_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("orbital_camera_controls")
+        .read_resource::<Input>()
+        .read_resource::<System>()
+        .with_query(<Write<OrbitalCamera>>::query())
+        .build(move |_, world, (input, system), query| {
+            let delta_time = system.delta_time as f32;
+            for mut camera in query.iter_mut(world) {
+                camera.forward(input.mouse.wheel_delta.y * 0.3);
+                if input.mouse.is_left_clicked {
+                    camera.rotate(&(input.mouse.position_delta * delta_time));
+                }
+            }
+        })
 }

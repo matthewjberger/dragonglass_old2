@@ -1,8 +1,10 @@
 use crate::{
-    camera::{FreeCamera, OrbitalCamera},
+    camera::{
+        fps_camera_controls_system, orbital_camera_controls_system, FreeCamera, OrbitalCamera,
+    },
     gui::Gui,
     input::Input,
-    renderer::{Backend, Renderer},
+    renderer::{AssetName, Backend, Renderer, Transform},
     system::System,
 };
 use anyhow::{Context, Result};
@@ -13,7 +15,7 @@ use serde::Deserialize;
 use simplelog::*;
 use std::fs::File;
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::PhysicalSize,
     event::{Event, VirtualKeyCode},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
@@ -25,28 +27,13 @@ pub struct Settings {
     height: i64,
 }
 
-pub struct App {
-    pub input: Input,
-    pub system: System,
-    pub free_camera: FreeCamera,
-    pub orbital_camera: OrbitalCamera,
-    pub using_free_camera: bool,
-}
+#[derive(Default)]
+pub struct App;
 
 impl App {
     pub const TITLE: &'static str = "Dragonglass - GLTF Model Viewer";
     pub const LOG_FILE: &'static str = "dragonglass.log";
     pub const SETTINGS_FILE: &'static str = "settings.toml";
-
-    pub fn new(window_dimensions: glm::Vec2) -> Self {
-        Self {
-            input: Input::default(),
-            system: System::new(window_dimensions),
-            free_camera: FreeCamera::default(),
-            orbital_camera: OrbitalCamera::default(),
-            using_free_camera: false,
-        }
-    }
 
     pub fn run() -> Result<()> {
         Self::setup_logger()?;
@@ -62,57 +49,95 @@ impl App {
             ))
             .build(&event_loop)?;
 
-        let window_dimensions = glm::vec2(
-            window.inner_size().width as _,
-            window.inner_size().height as _,
-        );
-
-        let mut app = App::new(window_dimensions);
-        app.setup_camera(&window)?;
+        let app = App::default();
 
         let mut gui = Gui::new(&window);
         let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
 
         renderer.initialize(&mut gui.context_mut());
 
+        let window_dimensions = glm::vec2(
+            window.inner_size().width as _,
+            window.inner_size().height as _,
+        );
+
+        let mut resources = Resources::default();
+        resources.insert(Input::default());
+        resources.insert(System::new(window_dimensions));
+
         let universe = Universe::new();
         let mut world = universe.create_world();
 
-        //let mut schedule = Schedule::builder().add_system().flush().build();
-        //schedule.execute();
+        // FIXME: Add tag to mark this as the main camera
+        world.insert((), vec![(OrbitalCamera::default(),)]);
+        world.insert(
+            (),
+            vec![
+                (
+                    Transform::default(),
+                    AssetName("assets/models/DamagedHelmet.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/CesiumMan.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
+                ),
+            ],
+        );
+
+        let mut update_schedule = Schedule::builder()
+            .add_system(fps_camera_controls_system())
+            .add_system(orbital_camera_controls_system())
+            .flush()
+            .build();
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
-            app.system.handle_event(&event);
+            if let Some(mut system) = resources.get_mut::<System>() {
+                system.handle_event(&event);
 
-            app.input.handle_event(&event, app.system.window_center());
+                if system.exit_requested {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
+
+            if let Some(mut input) = resources.get_mut::<Input>() {
+                let system = resources
+                    .get::<System>()
+                    .expect("Failed to get system resource!");
+                input.handle_event(&event, system.window_center());
+
+                if input.is_key_pressed(VirtualKeyCode::Escape) {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
 
             gui.handle_event(&event, &window);
 
-            if app.input.is_key_pressed(VirtualKeyCode::Escape) || app.system.exit_requested {
-                *control_flow = ControlFlow::Exit;
-            }
-
-            if app.input.is_key_pressed(VirtualKeyCode::Tab) {
-                app.using_free_camera = !app.using_free_camera;
-                let _ = app.setup_camera(&window);
-            }
-
             match event {
                 Event::NewEvents { .. } => {
-                    app.update_camera();
+                    update_schedule.execute(&mut world, &mut resources);
 
-                    renderer.update(&app);
-
-                    app.reset_controls(&mut window);
+                    // FIXME: Remove the need for this method
+                    renderer.update(&world, &resources);
                 }
                 Event::MainEventsCleared => {
                     let draw_data = gui
                         .render_frame(&window)
                         .expect("Failed to render gui frame!");
 
-                    renderer.render(&app.system.window_dimensions, &draw_data);
+                    let system = resources
+                        .get::<System>()
+                        .expect("Failed to get system resource!");
+                    renderer.render(&system.window_dimensions, &draw_data);
                 }
                 _ => {}
             }
@@ -140,45 +165,5 @@ impl App {
             .with_context(|| format!("settings file path: {}", Self::SETTINGS_FILE.to_string()))?;
         let settings: Settings = config.try_into()?;
         Ok(settings)
-    }
-
-    fn setup_camera(&mut self, window: &winit::window::Window) -> Result<()> {
-        if self.using_free_camera {
-            self.free_camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
-            self.free_camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
-
-            // Free camera setup. Hide, grab, and center cursor
-            window.set_cursor_visible(false);
-            let _ = window.set_cursor_grab(true);
-
-            let center = self.system.window_center_physical();
-            window.set_cursor_position(center)?;
-            self.input.mouse.position = glm::vec2(center.x as _, center.y as _);
-        } else {
-            // orbital
-            window.set_cursor_visible(true);
-            let _ = window.set_cursor_grab(false);
-        }
-
-        Ok(())
-    }
-
-    fn update_camera(&mut self) {
-        if self.using_free_camera {
-            self.free_camera
-                .update(&self.input, self.system.delta_time as f32);
-        } else {
-            self.orbital_camera
-                .update(&self.input, self.system.delta_time as f32);
-        }
-    }
-
-    fn reset_controls(&mut self, window: &mut winit::window::Window) {
-        if self.using_free_camera {
-            let center = self.system.window_center_physical();
-            // Center cursor for free camera
-            let _ = window.set_cursor_position(center);
-        }
-        self.input.mouse.wheel_delta = 0.0;
     }
 }

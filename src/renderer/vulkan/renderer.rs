@@ -1,22 +1,27 @@
-use crate::renderer::vulkan::{
-    core::{
-        sync::synchronization_set::{SynchronizationSet, SynchronizationSetConstants},
-        VulkanContext,
-    },
-    pbr::PbrScene,
-    render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
-    resource::{
-        image::{ImageView, Texture},
-        CommandPool, ShaderCache,
-    },
-};
 use crate::{
-    app::App,
-    renderer::{vulkan::gui::GuiRenderer, Renderer},
+    camera::OrbitalCamera,
+    renderer::{
+        vulkan::{
+            core::{
+                sync::synchronization_set::{SynchronizationSet, SynchronizationSetConstants},
+                VulkanContext,
+            },
+            gui::GuiRenderer,
+            pbr::PbrScene,
+            render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
+            resource::{
+                image::{ImageView, Texture},
+                CommandPool, ShaderCache,
+            },
+        },
+        Renderer,
+    },
+    system::System,
 };
 use anyhow::Result;
 use ash::vk;
 use imgui::{Context, DrawData};
+use legion::prelude::*;
 use log::warn;
 use nalgebra_glm as glm;
 use std::sync::Arc;
@@ -239,7 +244,8 @@ impl Renderer for VulkanRenderer {
         self.gui_renderer = Some(gui_renderer);
     }
 
-    fn update(&mut self, app: &App) {
+    fn update(&mut self, world: &World, resources: &Resources) {
+        // FIXME: Move this to the system struct
         let projection = glm::perspective_zo(
             self.swapchain().properties().aspect_ratio(),
             70_f32.to_radians(),
@@ -247,23 +253,22 @@ impl Renderer for VulkanRenderer {
             1000_f32,
         );
 
-        let camera_position = if app.using_free_camera {
-            *app.free_camera.position()
-        } else {
-            app.orbital_camera.position()
-        };
+        let camera = &<Read<OrbitalCamera>>::query()
+            .iter(world)
+            .collect::<Vec<_>>()[0];
 
-        let view_matrix = if app.using_free_camera {
-            app.free_camera.view_matrix()
-        } else {
-            app.orbital_camera.view_matrix()
-        };
+        let camera_position = camera.position();
+        let view_matrix = camera.view_matrix();
+
+        let system = resources
+            .get_mut::<System>()
+            .expect("Failed to get system resource!");
 
         self.scene.as_mut().unwrap().update(
             camera_position,
             projection,
             view_matrix,
-            app.system.delta_time,
+            system.delta_time,
         );
     }
 

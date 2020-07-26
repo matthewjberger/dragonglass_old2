@@ -814,6 +814,7 @@ impl PbrScene {
         view: glm::Mat4,
         delta_time: f64,
     ) {
+        // TODO: Move this logic to components
         let skybox_ubo = SkyboxUniformBufferObject { view, projection };
         let skybox_ubos = [skybox_ubo];
         self.skybox_pipeline_data

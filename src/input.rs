@@ -40,34 +40,27 @@ impl Input {
     }
 }
 
+#[derive(Default)]
 pub struct Mouse {
     pub is_left_clicked: bool,
     pub is_right_clicked: bool,
     pub position: glm::Vec2,
     pub position_delta: glm::Vec2,
     pub offset_from_center: glm::Vec2,
-    pub wheel_delta: f32,
+    pub wheel_delta: glm::Vec2,
     pub moved: bool,
-}
-
-impl Default for Mouse {
-    fn default() -> Self {
-        Self {
-            is_left_clicked: false,
-            is_right_clicked: false,
-            position: glm::vec2(0.0, 0.0),
-            position_delta: glm::vec2(0.0, 0.0),
-            offset_from_center: glm::vec2(0.0, 0.0),
-            wheel_delta: 0.0,
-            moved: false,
-        }
-    }
+    pub scrolled: bool,
 }
 
 impl Mouse {
     pub fn handle_event<T>(&mut self, event: &Event<T>, window_center: glm::Vec2) {
         match event {
             Event::NewEvents { .. } => {
+                if !self.scrolled {
+                    self.wheel_delta = glm::vec2(0.0, 0.0);
+                }
+                self.scrolled = false;
+
                 if !self.moved {
                     self.position_delta = glm::vec2(0.0, 0.0);
                 }
@@ -92,10 +85,11 @@ impl Mouse {
                     self.moved = true;
                 }
                 WindowEvent::MouseWheel {
-                    delta: MouseScrollDelta::LineDelta(_, v_lines),
+                    delta: MouseScrollDelta::LineDelta(h_lines, v_lines),
                     ..
                 } => {
-                    self.wheel_delta = v_lines;
+                    self.wheel_delta = glm::vec2(h_lines, v_lines);
+                    self.scrolled = true;
                 }
                 _ => {}
             },
