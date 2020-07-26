@@ -3,7 +3,7 @@ use imgui::{im_str, Condition, Context, DrawData, FontConfig, FontSource};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use winit::{event::Event, window::Window};
 
-struct Gui {
+pub struct Gui {
     context: Context,
     platform: WinitPlatform,
 }
@@ -59,5 +59,9 @@ impl Gui {
         let draw_data = ui.render();
 
         Ok(draw_data)
+    }
+
+    pub fn context_mut(&mut self) -> &mut Context {
+        &mut self.context
     }
 }
