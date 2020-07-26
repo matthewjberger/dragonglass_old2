@@ -90,7 +90,7 @@ impl App {
 
             gui.handle_event(&event, &window);
 
-            if app.input.is_key_pressed(VirtualKeyCode::Escape) {
+            if app.input.is_key_pressed(VirtualKeyCode::Escape) || app.system.exit_requested {
                 *control_flow = ControlFlow::Exit;
             }
 
