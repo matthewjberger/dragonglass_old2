@@ -204,6 +204,10 @@ pub fn orbital_camera_controls_system() -> Box<dyn Schedulable> {
         .read_resource::<System>()
         .with_query(<Write<OrbitalCamera>>::query())
         .build(move |_, world, (input, system), query| {
+            if !input.allowed {
+                return;
+            }
+
             let delta_time = system.delta_time as f32;
             for mut camera in query.iter_mut(world) {
                 camera.forward(input.mouse.wheel_delta.y * 0.3);

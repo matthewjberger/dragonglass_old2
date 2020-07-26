@@ -14,8 +14,7 @@ pub enum Backend {
 
 pub trait Renderer {
     fn initialize(&mut self, imgui: &mut Context);
-    fn update(&mut self, world: &World, resources: &Resources);
-    fn render(&mut self, window_dimensions: &glm::Vec2, draw_data: &DrawData);
+    fn render(&mut self, world: &World, resources: &Resources, draw_data: &DrawData);
 }
 
 impl dyn Renderer {

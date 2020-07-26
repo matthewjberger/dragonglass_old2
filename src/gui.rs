@@ -64,4 +64,8 @@ impl Gui {
     pub fn context_mut(&mut self) -> &mut Context {
         &mut self.context
     }
+
+    pub fn capturing_input(&self) -> bool {
+        self.context.io().want_capture_keyboard || self.context.io().want_capture_keyboard
+    }
 }

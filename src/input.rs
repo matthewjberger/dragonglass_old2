@@ -10,6 +10,7 @@ pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
 pub struct Input {
     pub keystates: KeyMap,
     pub mouse: Mouse,
+    pub allowed: bool,
 }
 
 impl Input {

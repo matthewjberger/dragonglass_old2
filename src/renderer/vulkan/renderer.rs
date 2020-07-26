@@ -244,7 +244,7 @@ impl Renderer for VulkanRenderer {
         self.gui_renderer = Some(gui_renderer);
     }
 
-    fn update(&mut self, world: &World, resources: &Resources) {
+    fn render(&mut self, world: &World, resources: &Resources, draw_data: &DrawData) {
         // FIXME: Move this to the system struct
         let projection = glm::perspective_zo(
             self.swapchain().properties().aspect_ratio(),
@@ -270,9 +270,7 @@ impl Renderer for VulkanRenderer {
             view_matrix,
             system.delta_time,
         );
-    }
 
-    fn render(&mut self, window_dimensions: &glm::Vec2, draw_data: &DrawData) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -289,7 +287,7 @@ impl Renderer for VulkanRenderer {
         let image_index = match image_index_result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&window_dimensions, draw_data)
+                self.recreate_swapchain(&system.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
                 return;
             }
@@ -323,11 +321,11 @@ impl Renderer for VulkanRenderer {
 
         match swapchain_presentation_result {
             Ok(is_suboptimal) if is_suboptimal => {
-                self.recreate_swapchain(&window_dimensions, draw_data)
+                self.recreate_swapchain(&system.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(&window_dimensions, draw_data)
+                self.recreate_swapchain(&system.window_dimensions, draw_data)
                     .expect("Failed to recreate swapchain!");
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),

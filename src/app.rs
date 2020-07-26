@@ -49,8 +49,6 @@ impl App {
             ))
             .build(&event_loop)?;
 
-        let app = App::default();
-
         let mut gui = Gui::new(&window);
         let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
 
@@ -109,25 +107,23 @@ impl App {
                 }
             }
 
+            gui.handle_event(&event, &window);
+
             if let Some(mut input) = resources.get_mut::<Input>() {
                 let system = resources
                     .get::<System>()
                     .expect("Failed to get system resource!");
                 input.handle_event(&event, system.window_center());
+                input.allowed = !gui.capturing_input();
 
                 if input.is_key_pressed(VirtualKeyCode::Escape) {
                     *control_flow = ControlFlow::Exit;
                 }
             }
 
-            gui.handle_event(&event, &window);
-
             match event {
                 Event::NewEvents { .. } => {
                     update_schedule.execute(&mut world, &mut resources);
-
-                    // FIXME: Remove the need for this method
-                    renderer.update(&world, &resources);
                 }
                 Event::MainEventsCleared => {
                     let draw_data = gui
@@ -137,7 +133,7 @@ impl App {
                     let system = resources
                         .get::<System>()
                         .expect("Failed to get system resource!");
-                    renderer.render(&system.window_dimensions, &draw_data);
+                    renderer.render(&world, &resources, &draw_data);
                 }
                 _ => {}
             }
