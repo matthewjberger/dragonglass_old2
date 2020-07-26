@@ -14,7 +14,7 @@ use crate::{
                 CommandPool, ShaderCache,
             },
         },
-        Renderer,
+        AssetName, Renderer,
     },
     system::System,
 };
@@ -204,13 +204,11 @@ impl Drop for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn initialize(&mut self, mut imgui: &mut Context) {
-        let asset_names = vec![
-            "assets/models/DamagedHelmet.glb",
-            "assets/models/CesiumMan.glb",
-            "assets/models/AlphaBlendModeTest.glb",
-            "assets/models/MetalRoughSpheres.glb",
-        ];
+    fn initialize(&mut self, world: &World, resources: &Resources, mut imgui: &mut Context) {
+        let asset_names = &<Read<AssetName>>::query()
+            .iter(world)
+            .map(|asset_name| asset_name.0.to_string())
+            .collect::<Vec<_>>();
 
         let render_pass = self.handles.as_ref().unwrap().render_pass.clone();
         let scene_data = PbrScene::new(
@@ -218,7 +216,7 @@ impl Renderer for VulkanRenderer {
             &self.transient_command_pool,
             &mut self.shader_cache,
             render_pass,
-            &asset_names,
+            asset_names,
             vk::SampleCountFlags::TYPE_1,
         );
 

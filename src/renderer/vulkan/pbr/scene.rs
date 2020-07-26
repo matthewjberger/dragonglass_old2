@@ -587,9 +587,11 @@ impl PbrScene {
         command_pool: &CommandPool,
         shader_cache: &mut ShaderCache,
         render_pass: Arc<RenderPass>,
-        asset_names: &[&str],
+        asset_names: &[String],
         samples: vk::SampleCountFlags,
     ) -> Self {
+        // FIXME: This will need to allow dynamic entity addition and removal
+        // FIXME: Cache loaded assets, can be manually cleared whenever necessary
         let environment_maps = EnvironmentMapSet::new(context.clone(), command_pool, shader_cache);
 
         let assets = asset_names

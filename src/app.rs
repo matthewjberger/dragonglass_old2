@@ -49,11 +49,6 @@ impl App {
             ))
             .build(&event_loop)?;
 
-        let mut gui = Gui::new(&window);
-        let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
-
-        renderer.initialize(&mut gui.context_mut());
-
         let window_dimensions = glm::vec2(
             window.inner_size().width as _,
             window.inner_size().height as _,
@@ -75,18 +70,18 @@ impl App {
                     Transform::default(),
                     AssetName("assets/models/DamagedHelmet.glb".to_string()),
                 ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/CesiumMan.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
-                ),
+                // (
+                //     Transform::default(),
+                //     AssetName("assets/models/CesiumMan.glb".to_string()),
+                // ),
+                // (
+                //     Transform::default(),
+                //     AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
+                // ),
+                // (
+                //     Transform::default(),
+                //     AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
+                // ),
             ],
         );
 
@@ -95,6 +90,10 @@ impl App {
             .add_system(orbital_camera_controls_system())
             .flush()
             .build();
+
+        let mut gui = Gui::new(&window);
+        let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
+        renderer.initialize(&world, &resources, &mut gui.context_mut());
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -130,9 +129,6 @@ impl App {
                         .render_frame(&window)
                         .expect("Failed to render gui frame!");
 
-                    let system = resources
-                        .get::<System>()
-                        .expect("Failed to get system resource!");
                     renderer.render(&world, &resources, &draw_data);
                 }
                 _ => {}

@@ -12,8 +12,9 @@ pub enum Backend {
     Vulkan,
 }
 
+// FIXME: Make the renderer trait take something more specific than the world and resources
 pub trait Renderer {
-    fn initialize(&mut self, imgui: &mut Context);
+    fn initialize(&mut self, world: &World, resources: &Resources, imgui: &mut Context);
     fn render(&mut self, world: &World, resources: &Resources, draw_data: &DrawData);
 }
 
