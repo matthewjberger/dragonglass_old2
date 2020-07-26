@@ -1,62 +1,24 @@
 use crate::{
     camera::{FreeCamera, OrbitalCamera},
+    input::Input,
     renderer::{Backend, Renderer},
 };
 use anyhow::{Context, Result};
 use imgui::Context as ImguiContext;
 use imgui::*;
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use legion::prelude::*;
 use log::debug;
 use nalgebra_glm as glm;
 use serde::Deserialize;
 use simplelog::*;
-use std::collections::HashMap;
 use std::{fs::File, time::Instant};
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{
-        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
-        WindowEvent,
-    },
+    event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-
-pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
-
-#[derive(Default)]
-pub struct Input {
-    pub keystates: KeyMap,
-    pub mouse: Mouse,
-}
-
-pub struct Mouse {
-    pub is_left_clicked: bool,
-    pub is_right_clicked: bool,
-    pub position: glm::Vec2,
-    pub position_delta: glm::Vec2,
-    pub offset_from_center: glm::Vec2,
-    pub wheel_delta: f32,
-}
-
-impl Default for Mouse {
-    fn default() -> Self {
-        Self {
-            is_left_clicked: false,
-            is_right_clicked: false,
-            position: glm::vec2(0.0, 0.0),
-            position_delta: glm::vec2(0.0, 0.0),
-            offset_from_center: glm::vec2(0.0, 0.0),
-            wheel_delta: 0.0,
-        }
-    }
-}
-
-impl Input {
-    pub fn is_key_pressed(&self, keycode: VirtualKeyCode) -> bool {
-        self.keystates.contains_key(&keycode) && self.keystates[&keycode] == ElementState::Pressed
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
@@ -116,11 +78,18 @@ impl App {
             }),
         }]);
         imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
         platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Rounded);
 
         let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
 
         renderer.initialize(&mut imgui);
+
+        let universe = Universe::new();
+        let mut world = universe.create_world();
+
+        //let mut schedule = Schedule::builder().add_system().flush().build();
+        //schedule.execute();
 
         let mut last_frame = Instant::now();
         let mut cursor_moved = false;
@@ -128,6 +97,16 @@ impl App {
             *control_flow = ControlFlow::Poll;
 
             platform.handle_event(imgui.io_mut(), &window, &event);
+            app.input.handle_event(&event, app.window_center());
+
+            if app.input.is_key_pressed(VirtualKeyCode::Escape) {
+                *control_flow = ControlFlow::Exit;
+            }
+
+            if app.input.is_key_pressed(VirtualKeyCode::Tab) {
+                app.using_free_camera = !app.using_free_camera;
+                let _ = app.setup_camera(&window);
+            }
 
             match event {
                 Event::NewEvents { .. } => {
@@ -143,53 +122,8 @@ impl App {
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                virtual_keycode: Some(keycode),
-                                state,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if keycode == VirtualKeyCode::Escape {
-                            *control_flow = ControlFlow::Exit;
-                        }
-                        *app.input.keystates.entry(keycode).or_insert(state) = state;
-
-                        if keycode == VirtualKeyCode::Tab && state == ElementState::Pressed {
-                            app.using_free_camera = !app.using_free_camera;
-                            let _ = app.setup_camera(&window);
-                        }
-                    }
                     WindowEvent::Resized(PhysicalSize { width, height }) => {
                         app.window_dimensions = glm::vec2(width as f32, height as f32);
-                    }
-                    WindowEvent::MouseInput { button, state, .. } => {
-                        let clicked = state == ElementState::Pressed;
-                        match button {
-                            MouseButton::Left => app.input.mouse.is_left_clicked = clicked,
-                            MouseButton::Right => app.input.mouse.is_right_clicked = clicked,
-                            _ => {}
-                        }
-                    }
-                    WindowEvent::CursorMoved { position, .. } => {
-                        let last_position = app.input.mouse.position;
-                        let current_position = glm::vec2(position.x as _, position.y as _);
-                        app.input.mouse.position = current_position;
-                        app.input.mouse.position_delta = current_position - last_position;
-                        let center = app.window_center();
-                        app.input.mouse.offset_from_center = glm::vec2(
-                            (center.x - position.x as i32) as _,
-                            (center.y - position.y as i32) as _,
-                        );
-                        cursor_moved = true;
-                    }
-                    WindowEvent::MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(_, v_lines),
-                        ..
-                    } => {
-                        app.input.mouse.wheel_delta = v_lines;
                     }
                     _ => {}
                 },
@@ -217,11 +151,6 @@ impl App {
                     let draw_data = ui.render();
 
                     renderer.render(&app.window_dimensions, &draw_data);
-
-                    if !cursor_moved {
-                        app.input.mouse.position_delta = glm::vec2(0.0, 0.0);
-                    }
-                    cursor_moved = false;
                 }
                 _ => {}
             }
@@ -251,10 +180,10 @@ impl App {
         Ok(settings)
     }
 
-    fn window_center(&self) -> PhysicalPosition<i32> {
-        PhysicalPosition::new(
-            (self.window_dimensions.x / 2.0) as i32,
-            (self.window_dimensions.y / 2.0) as i32,
+    fn window_center(&self) -> glm::Vec2 {
+        glm::vec2(
+            (self.window_dimensions.x / 2.0) as _,
+            (self.window_dimensions.y / 2.0) as _,
         )
     }
 
@@ -268,7 +197,7 @@ impl App {
             let _ = window.set_cursor_grab(true);
 
             let center = self.window_center();
-            window.set_cursor_position(center)?;
+            window.set_cursor_position(PhysicalPosition::new(center.x as i32, center.y as i32))?;
             self.input.mouse.position = glm::vec2(center.x as _, center.y as _);
         } else {
             // orbital
@@ -290,8 +219,10 @@ impl App {
 
     fn reset_controls(&mut self, window: &mut winit::window::Window) {
         if self.using_free_camera {
+            let center = self.window_center();
             // Center cursor for free camera
-            let _ = window.set_cursor_position(self.window_center());
+            let _ =
+                window.set_cursor_position(PhysicalPosition::new(center.x as i32, center.y as i32));
         }
         self.input.mouse.wheel_delta = 0.0;
     }

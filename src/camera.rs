@@ -1,4 +1,4 @@
-use crate::app::Input;
+use crate::input::Input;
 use nalgebra_glm as glm;
 use winit::event::VirtualKeyCode;
 
