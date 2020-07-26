@@ -59,13 +59,9 @@ impl VulkanRenderer {
 
         let swapchain = Swapchain::new(context.clone(), dimensions)?;
 
-        let handles = ForwardRenderingHandles::new(
-            context.clone(),
-            &transient_command_pool,
-            &swapchain,
-            vk::SampleCountFlags::TYPE_1,
-        )
-        .unwrap();
+        let handles =
+            ForwardRenderingHandles::new(context.clone(), &swapchain, vk::SampleCountFlags::TYPE_1)
+                .unwrap();
 
         let renderer = Self {
             context,
@@ -101,7 +97,6 @@ impl VulkanRenderer {
         self.handles = None;
         let handles = ForwardRenderingHandles::new(
             self.context.clone(),
-            &self.transient_command_pool,
             self.swapchain(),
             vk::SampleCountFlags::TYPE_1,
         )
@@ -349,7 +344,6 @@ pub struct ForwardRenderingHandles {
 impl ForwardRenderingHandles {
     pub fn new(
         context: Arc<VulkanContext>,
-        command_pool: &CommandPool,
         swapchain: &Swapchain,
         samples: vk::SampleCountFlags,
     ) -> Result<Self> {
