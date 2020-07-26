@@ -16,10 +16,10 @@ pub struct System {
 }
 
 impl System {
-    pub fn new() -> Self {
+    pub fn new(window_dimensions: glm::Vec2) -> Self {
         Self {
             last_frame: Instant::now(),
-            window_dimensions: glm::Vec2::default(),
+            window_dimensions,
             delta_time: 0.01,
             exit_requested: false,
         }

@@ -41,7 +41,7 @@ impl App {
     pub fn new(window_dimensions: glm::Vec2) -> Self {
         Self {
             input: Input::default(),
-            system: System::new(),
+            system: System::new(window_dimensions),
             free_camera: FreeCamera::default(),
             orbital_camera: OrbitalCamera::default(),
             using_free_camera: false,
@@ -81,7 +81,6 @@ impl App {
         //let mut schedule = Schedule::builder().add_system().flush().build();
         //schedule.execute();
 
-        app.system = System::new();
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
 
