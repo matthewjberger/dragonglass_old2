@@ -75,13 +75,14 @@ pub struct PbrPipelineData {
 }
 
 impl PbrPipelineData {
+    pub const MAX_NUMBER_OF_MESHES: usize = 1000;
+
     // This should match the number of textures defined in the shader
     pub const MAX_TEXTURES: usize = 100;
 
     pub fn new(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
-        number_of_meshes: usize,
         textures: &[&TextureBundle],
         environment_maps: &EnvironmentMapSet,
     ) -> Self {
@@ -103,7 +104,7 @@ impl PbrPipelineData {
 
         let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             context.clone(),
-            (number_of_meshes as u64 * dynamic_alignment) as vk::DeviceSize,
+            (Self::MAX_NUMBER_OF_MESHES as u64 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk_mem::MemoryUsage::CpuToGpu,
         )
@@ -118,7 +119,7 @@ impl PbrPipelineData {
             dummy: DummyImage::new(context.clone(), &command_pool),
         };
 
-        data.update_descriptor_set(context, number_of_meshes, textures, environment_maps);
+        data.update_descriptor_set(context, textures, environment_maps);
 
         data
     }
@@ -240,7 +241,6 @@ impl PbrPipelineData {
     fn update_descriptor_set(
         &self,
         context: Arc<VulkanContext>,
-        number_of_meshes: usize,
         textures: &[&TextureBundle],
         environment_maps: &EnvironmentMapSet,
     ) {
@@ -253,7 +253,7 @@ impl PbrPipelineData {
         let buffer_infos = [buffer_info];
 
         let dynamic_uniform_buffer_size =
-            (number_of_meshes as u64 * self.dynamic_alignment) as vk::DeviceSize;
+            (Self::MAX_NUMBER_OF_MESHES as u64 * self.dynamic_alignment) as vk::DeviceSize;
         let dynamic_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.dynamic_uniform_buffer.buffer())
             .offset(0)
@@ -594,12 +594,6 @@ impl AssetCache {
         Self { cache }
     }
 
-    pub fn number_of_meshes(&self) -> usize {
-        self.cache.values().fold(0, |total_meshes, asset| {
-            total_meshes + asset.number_of_meshes
-        })
-    }
-
     // FIXME: Consider storing the geometry buffer and textures inside the AssetCache object
     pub fn create_geometry_buffer(&self, command_pool: &CommandPool) -> GeometryBuffer {
         let assets = self.cache.values().collect::<Vec<_>>();
@@ -628,7 +622,7 @@ impl AssetCache {
 pub struct PbrScene {
     context: Arc<VulkanContext>,
     asset_geometry_buffer: GeometryBuffer,
-    environment_maps: EnvironmentMapSet,
+    _environment_maps: EnvironmentMapSet,
     skybox_pipeline: Option<RenderPipeline>,
     skybox_pipeline_data: SkyboxPipelineData,
     pbr_pipeline: Option<RenderPipeline>,
@@ -656,7 +650,6 @@ impl PbrScene {
         let pbr_pipeline_data = PbrPipelineData::new(
             context.clone(),
             &command_pool,
-            asset_cache.number_of_meshes(),
             &asset_cache.textures(),
             &environment_maps,
         );
@@ -670,7 +663,7 @@ impl PbrScene {
         let mut pbr_scene_data = Self {
             context,
             asset_geometry_buffer,
-            environment_maps,
+            _environment_maps: environment_maps,
             skybox_pipeline: None,
             skybox_pipeline_data,
             pbr_pipeline: None,

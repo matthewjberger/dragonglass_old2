@@ -66,6 +66,6 @@ impl Gui {
     }
 
     pub fn capturing_input(&self) -> bool {
-        self.context.io().want_capture_keyboard || self.context.io().want_capture_keyboard
+        self.context.io().want_capture_keyboard || self.context.io().want_capture_mouse
     }
 }
