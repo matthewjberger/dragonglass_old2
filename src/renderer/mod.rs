@@ -4,6 +4,7 @@ use crate::renderer::vulkan::VulkanRenderer;
 use anyhow::Result;
 use imgui::{Context, DrawData};
 use legion::prelude::*;
+use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
 use winit::window::Window;
 
@@ -40,17 +41,33 @@ pub struct AssetName(pub String);
 
 #[derive(Debug)]
 pub struct Transform {
-    pub translate: glm::Mat4,
-    pub rotate: glm::Mat4,
-    pub scale: glm::Mat4,
+    pub translation: glm::Vec3,
+    pub rotation: glm::Quat,
+    pub scale: glm::Vec3,
 }
 
 impl Default for Transform {
     fn default() -> Self {
         Self {
-            translate: glm::Mat4::identity(),
-            rotate: glm::Mat4::identity(),
-            scale: glm::Mat4::identity(),
+            translation: glm::vec3(0.0, 0.0, 0.0),
+            rotation: glm::Quat::identity(),
+            scale: glm::vec3(1.0, 1.0, 1.0),
         }
+    }
+}
+
+impl Transform {
+    pub fn new(translation: glm::Vec3, rotation: glm::Quat, scale: glm::Vec3) -> Self {
+        Self {
+            translation,
+            rotation,
+            scale,
+        }
+    }
+
+    pub fn matrix(&self) -> glm::Mat4 {
+        Matrix4::new_translation(&self.translation)
+            * Matrix4::from(UnitQuaternion::from_quaternion(self.rotation))
+            * Matrix4::new_nonuniform_scaling(&self.scale)
     }
 }

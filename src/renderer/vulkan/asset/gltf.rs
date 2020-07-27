@@ -1,14 +1,17 @@
-use crate::renderer::vulkan::{
-    core::VulkanContext,
-    resource::{
-        image::{TextureBundle, TextureDescription},
-        CommandPool,
+use crate::renderer::{
+    vulkan::{
+        core::VulkanContext,
+        resource::{
+            image::{TextureBundle, TextureDescription},
+            CommandPool,
+        },
     },
+    Transform,
 };
 use ash::vk;
 use gltf::animation::{util::ReadOutputs, Interpolation};
 use log::trace;
-use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
+use nalgebra::Quaternion;
 use nalgebra_glm as glm;
 use petgraph::{
     dot::{Config, Dot},
@@ -24,39 +27,6 @@ pub enum TransformationSet {
     Rotations(Vec<glm::Vec4>),
     Scales(Vec<glm::Vec3>),
     MorphTargetWeights(Vec<f32>),
-}
-
-#[derive(Debug)]
-pub struct Transform {
-    pub translation: glm::Vec3,
-    pub rotation: glm::Quat,
-    pub scale: glm::Vec3,
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self {
-            translation: glm::Vec3::identity(),
-            rotation: glm::Quat::identity(),
-            scale: glm::Vec3::identity(),
-        }
-    }
-}
-
-impl Transform {
-    pub fn new(translation: glm::Vec3, rotation: glm::Quat, scale: glm::Vec3) -> Self {
-        Self {
-            translation,
-            rotation,
-            scale,
-        }
-    }
-
-    pub fn matrix(&self) -> glm::Mat4 {
-        Matrix4::new_translation(&self.translation)
-            * Matrix4::from(UnitQuaternion::from_quaternion(self.rotation))
-            * Matrix4::new_nonuniform_scaling(&self.scale)
-    }
 }
 
 pub type NodeGraph = Graph<Node, ()>;

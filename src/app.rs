@@ -70,18 +70,22 @@ impl App {
                     Transform::default(),
                     AssetName("assets/models/DamagedHelmet.glb".to_string()),
                 ),
-                // (
-                //     Transform::default(),
-                //     AssetName("assets/models/CesiumMan.glb".to_string()),
-                // ),
-                // (
-                //     Transform::default(),
-                //     AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
-                // ),
-                // (
-                //     Transform::default(),
-                //     AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
-                // ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/CesiumMan.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
+                ),
+                (
+                    Transform::default(),
+                    AssetName("assets/models/DamagedHelmet.glb".to_string()),
+                ),
             ],
         );
 

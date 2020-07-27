@@ -18,6 +18,7 @@ use crate::{
                 Buffer, CommandPool, GeometryBuffer, ShaderCache, ShaderPathSetBuilder,
             },
         },
+        AssetName, Transform,
     },
     system::System,
 };
@@ -574,9 +575,15 @@ impl EnvironmentMapSet {
     }
 }
 
-#[derive(Default)]
+pub struct AssetMetadata {
+    index: usize,
+    mesh_offset: usize,
+    joint_offset: usize,
+}
+
 pub struct AssetCache {
-    pub cache: HashMap<String, GltfAsset>,
+    pub assets: Vec<GltfAsset>,
+    pub metadata: HashMap<String, AssetMetadata>,
 }
 
 impl AssetCache {
@@ -585,25 +592,47 @@ impl AssetCache {
         asset_names: &[String],
         command_pool: &CommandPool,
     ) -> Self {
-        let mut cache = HashMap::new();
-        for asset_name in asset_names {
+        let mut assets = Vec::new();
+        let mut metadata = HashMap::new();
+        let mut mesh_offset = 0;
+        let mut joint_offset = 0;
+        for (index, asset_name) in asset_names.iter().enumerate() {
             let asset = GltfAsset::new(context.clone(), &command_pool, &asset_name);
-            cache.insert(asset_name.to_string(), asset);
+            asset.walk_mut(|node_index, graph| {
+                if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                    if let Some(skin) = graph[node_index].skin.as_ref() {
+                        joint_offset += skin.joints.len();
+                    }
+                }
+            });
+
+            metadata.insert(
+                asset_name.to_string(),
+                AssetMetadata {
+                    index,
+                    mesh_offset,
+                    joint_offset,
+                },
+            );
+
+            mesh_offset += asset.number_of_meshes;
+
+            assets.push(asset);
         }
 
-        Self { cache }
+        Self { assets, metadata }
     }
 
     // FIXME: Consider storing the geometry buffer and textures inside the AssetCache object
     pub fn create_geometry_buffer(&self, command_pool: &CommandPool) -> GeometryBuffer {
-        let assets = self.cache.values().collect::<Vec<_>>();
-
-        let vertices = assets
+        let vertices = self
+            .assets
             .iter()
             .flat_map(|asset| asset.vertices.iter().copied())
             .collect::<Vec<_>>();
 
-        let indices = assets
+        let indices = self
+            .assets
             .iter()
             .flat_map(|asset| asset.indices.iter().copied())
             .collect::<Vec<_>>();
@@ -612,8 +641,8 @@ impl AssetCache {
     }
 
     pub fn textures(&self) -> Vec<&TextureBundle> {
-        self.cache
-            .values()
+        self.assets
+            .iter()
             .flat_map(|asset| &asset.textures)
             .collect::<Vec<_>>()
     }
@@ -810,7 +839,7 @@ impl PbrScene {
                 }
 
                 let mut offsets = GltfOffsets::default();
-                for asset in self.asset_cache.cache.values() {
+                for asset in self.asset_cache.assets.iter() {
                     if *alpha_mode == AlphaMode::Blend {
                         pbr_renderer_blended.draw_asset(
                             self.context.logical_device().logical_device(),
@@ -855,7 +884,7 @@ impl PbrScene {
             .upload_to_buffer(&skybox_ubos, 0)
             .unwrap();
 
-        for asset in self.asset_cache.cache.values_mut() {
+        for asset in self.asset_cache.assets.iter_mut() {
             for animation in asset.animations.iter_mut() {
                 animation.time += 0.75 * system.delta_time as f32;
             }
@@ -876,17 +905,19 @@ impl PbrScene {
             joint_matrices: [glm::Mat4::identity(); UniformBufferObject::MAX_NUM_JOINTS],
         };
 
-        let spacing = glm::vec3(20.0, 0.0, 0.0);
-        let mut asset_transform = glm::Mat4::identity();
-        let mut mesh_offset = 0;
-        let mut joint_offset = 0;
-        for asset in self.asset_cache.cache.values() {
+        for (name, transform) in <(Read<AssetName>, Read<Transform>)>::query().iter(world) {
+            let metadata = &self.asset_cache.metadata[&name.0];
+            let index = metadata.index;
+            let asset = &self.asset_cache.assets[index];
+            let mesh_offset = metadata.mesh_offset;
+            let joint_offset = metadata.joint_offset;
+
             asset.walk_mut(|node_index, graph| {
                 let global_transform =
                     GltfAsset::calculate_global_transform(node_index, graph);
                 if let Some(mesh) = graph[node_index].mesh.as_ref() {
                         let mut dynamic_ubo = DynamicUniformBufferObject {
-                            model: asset_transform * global_transform,
+                            model: (*transform).matrix() * global_transform,
                             joint_info: glm::vec4(0.0, 0.0, 0.0, 0.0),
                         };
 
@@ -910,7 +941,6 @@ impl PbrScene {
 
                                 ubo.joint_matrices[joint_offset + index] = joint_matrix;
                             }
-                            joint_offset += joint_count;
                         }
 
                         let dynamic_ubos = [dynamic_ubo];
@@ -933,8 +963,6 @@ impl PbrScene {
                             .expect("Failed to flush buffer!");
                 }
             });
-            mesh_offset += asset.number_of_meshes;
-            asset_transform = glm::translate(&asset_transform, &spacing)
         }
 
         let ubos = [ubo];
