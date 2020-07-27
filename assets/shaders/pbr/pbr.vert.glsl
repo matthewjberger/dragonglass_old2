@@ -9,7 +9,7 @@ layout (location = 3) in vec2 inUV1;
 layout (location = 4) in vec4 inJoint0;
 layout (location = 5) in vec4 inWeight0;
 
-#define MAX_NUM_JOINTS 128
+#define MAX_NUM_JOINTS 1280
 
 layout(binding = 0) uniform UboView {
   mat4 view;

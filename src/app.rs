@@ -63,31 +63,20 @@ impl App {
 
         // FIXME: Add tag to mark this as the main camera
         world.insert((), vec![(OrbitalCamera::default(),)]);
-        world.insert(
-            (),
-            vec![
-                (
-                    Transform::default(),
-                    AssetName("assets/models/DamagedHelmet.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/CesiumMan.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/AlphaBlendModeTest.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
-                ),
-                (
-                    Transform::default(),
-                    AssetName("assets/models/DamagedHelmet.glb".to_string()),
-                ),
-            ],
-        );
+
+        let mut helmets = Vec::new();
+        for offset in 0..20 {
+            let instance = (
+                Transform {
+                    translation: glm::vec3(offset as _, offset as _, offset as _),
+                    ..Default::default()
+                },
+                AssetName("assets/models/DamagedHelmet.glb".to_string()),
+            );
+            helmets.push(instance);
+        }
+
+        world.insert((), helmets);
 
         let mut update_schedule = Schedule::builder()
             .add_system(fps_camera_controls_system())

@@ -9,7 +9,7 @@ layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
 
-layout(binding = 2) uniform sampler2D textures[100];
+layout(binding = 2) uniform sampler2D textures[1000];
 layout(binding = 3) uniform samplerCube irradiance_cubemap;
 layout(binding = 4) uniform samplerCube prefilter_cubemap;
 layout(binding = 5) uniform sampler2D brdflut;
@@ -30,7 +30,7 @@ layout(push_constant) uniform Material {
 
 layout(location = 0) out vec4 outColor;
 
-#define MAX_NUM_JOINTS 128
+#define MAX_NUM_JOINTS 1280
 
 layout(binding = 0) uniform UboView {
   mat4 view;

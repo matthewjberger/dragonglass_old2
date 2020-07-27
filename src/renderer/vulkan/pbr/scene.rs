@@ -54,7 +54,7 @@ pub struct UniformBufferObject {
 
 impl UniformBufferObject {
     // This needs to match the defined value in the shaders
-    pub const MAX_NUM_JOINTS: usize = 128;
+    pub const MAX_NUM_JOINTS: usize = 1280;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,10 +76,10 @@ pub struct PbrPipelineData {
 }
 
 impl PbrPipelineData {
-    pub const MAX_NUMBER_OF_MESHES: usize = 1000;
+    pub const MAX_NUMBER_OF_MESHES: usize = 10000;
 
     // This should match the number of textures defined in the shader
-    pub const MAX_TEXTURES: usize = 100;
+    pub const MAX_TEXTURES: usize = 1000;
 
     pub fn new(
         context: Arc<VulkanContext>,
@@ -375,14 +375,6 @@ impl PbrPipelineData {
     }
 }
 
-#[derive(Default)]
-pub struct GltfOffsets {
-    pub texture_offset: i32,
-    pub mesh_offset: usize,
-    pub index_offset: u32,
-    pub vertex_offset: u32,
-}
-
 pub struct PbrRenderer {
     command_buffer: vk::CommandBuffer,
     pipeline_layout: vk::PipelineLayout,
@@ -408,9 +400,11 @@ impl PbrRenderer {
         &self,
         device: &ash::Device,
         asset: &GltfAsset,
-        offsets: &GltfOffsets,
+        asset_metadata: &AssetMetadata,
+        instance: usize,
         alpha_mode: AlphaMode,
     ) {
+        let instance_metadata = &asset_metadata.instances[instance];
         asset.walk(|node_index, graph| {
             if let Some(mesh) = graph[node_index].mesh.as_ref() {
                 unsafe {
@@ -420,10 +414,8 @@ impl PbrRenderer {
                         self.pipeline_layout,
                         0,
                         &[self.descriptor_set],
-                        &[
-                            ((offsets.mesh_offset + mesh.mesh_id) as u64 * self.dynamic_alignment)
-                                as _,
-                        ],
+                        &[((instance_metadata.mesh_offset + mesh.mesh_id) as u64
+                            * self.dynamic_alignment) as _],
                     );
                 }
 
@@ -442,8 +434,11 @@ impl PbrRenderer {
                         continue;
                     }
 
-                    let material =
-                        Self::create_material(&asset, &primitive, offsets.texture_offset);
+                    let material = Self::create_material(
+                        &asset,
+                        &primitive,
+                        asset_metadata.texture_offset as i32,
+                    );
                     unsafe {
                         device.cmd_push_constants(
                             self.command_buffer,
@@ -457,8 +452,8 @@ impl PbrRenderer {
                             self.command_buffer,
                             primitive.number_of_indices,
                             1,
-                            offsets.index_offset + primitive.first_index,
-                            offsets.vertex_offset as _,
+                            asset_metadata.index_offset as u32 + primitive.first_index,
+                            asset_metadata.vertex_offset as _,
                             0,
                         );
                     }
@@ -575,15 +570,25 @@ impl EnvironmentMapSet {
     }
 }
 
-pub struct AssetMetadata {
-    index: usize,
+#[derive(Debug, Default)]
+pub struct InstanceMetadata {
     mesh_offset: usize,
     joint_offset: usize,
+}
+
+#[derive(Debug, Default)]
+pub struct AssetMetadata {
+    index: usize,
+    texture_offset: usize,
+    vertex_offset: usize,
+    index_offset: usize,
+    instances: Vec<InstanceMetadata>,
 }
 
 pub struct AssetCache {
     pub assets: Vec<GltfAsset>,
     pub metadata: HashMap<String, AssetMetadata>,
+    context: Arc<VulkanContext>,
 }
 
 impl AssetCache {
@@ -592,35 +597,75 @@ impl AssetCache {
         asset_names: &[String],
         command_pool: &CommandPool,
     ) -> Self {
-        let mut assets = Vec::new();
+        let mut asset_cache = Self {
+            assets: Vec::new(),
+            metadata: HashMap::new(),
+            context,
+        };
+        asset_cache.generate_metadata(asset_names, command_pool);
+        asset_cache
+    }
+
+    pub fn generate_metadata(&mut self, asset_names: &[String], command_pool: &CommandPool) {
         let mut metadata = HashMap::new();
         let mut mesh_offset = 0;
         let mut joint_offset = 0;
-        for (index, asset_name) in asset_names.iter().enumerate() {
-            let asset = GltfAsset::new(context.clone(), &command_pool, &asset_name);
+        let mut texture_offset = 0;
+        let mut vertex_offset = 0;
+        let mut index_offset = 0;
+        let mut asset_index = 0;
+
+        for asset_name in asset_names.iter() {
+            // First occurrence of asset
+            let first_visit = !metadata.contains_key(&asset_name.to_string());
+
+            // Create and/or mutably retrieve the metadata
+            let mut asset_metadata = metadata
+                .entry(asset_name.to_string())
+                .or_insert(AssetMetadata::default());
+
+            if first_visit {
+                // Update the metadata
+                asset_metadata.index = asset_index;
+                asset_metadata.texture_offset = texture_offset;
+                asset_metadata.vertex_offset = vertex_offset;
+                asset_metadata.index_offset = index_offset;
+
+                // Load the asset
+                let asset = GltfAsset::new(self.context.clone(), &command_pool, &asset_name);
+
+                // Asset metadata is only updated on the first visit
+                asset_index += 1;
+                texture_offset += asset.textures.len();
+                vertex_offset += asset.vertices.len() / GltfAsset::vertex_stride();
+                index_offset += asset.indices.len();
+
+                // Store the asset
+                self.assets.push(asset);
+            }
+
+            // Use the asset to add offsets for an instance
+            let asset = &self.assets[asset_metadata.index];
             asset.walk_mut(|node_index, graph| {
-                if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                    if let Some(skin) = graph[node_index].skin.as_ref() {
-                        joint_offset += skin.joints.len();
-                    }
+                if let Some(skin) = graph[node_index].skin.as_ref() {
+                    joint_offset += skin.joints.len();
                 }
             });
 
-            metadata.insert(
-                asset_name.to_string(),
-                AssetMetadata {
-                    index,
-                    mesh_offset,
-                    joint_offset,
-                },
-            );
+            // Create the instance
+            let instance_metadata = InstanceMetadata {
+                mesh_offset,
+                joint_offset,
+            };
 
+            // Update the mesh offset every time we create an instance
             mesh_offset += asset.number_of_meshes;
-
-            assets.push(asset);
+            asset_metadata.instances.push(instance_metadata);
         }
 
-        Self { assets, metadata }
+        println!("Metadata: {:#?}", metadata);
+
+        self.metadata = metadata;
     }
 
     // FIXME: Consider storing the geometry buffer and textures inside the AssetCache object
@@ -838,28 +883,27 @@ impl PbrScene {
                     _ => {}
                 }
 
-                let mut offsets = GltfOffsets::default();
-                for asset in self.asset_cache.assets.iter() {
-                    if *alpha_mode == AlphaMode::Blend {
-                        pbr_renderer_blended.draw_asset(
-                            self.context.logical_device().logical_device(),
-                            &asset,
-                            &offsets,
-                            *alpha_mode,
-                        );
-                    } else {
-                        pbr_renderer.draw_asset(
-                            self.context.logical_device().logical_device(),
-                            &asset,
-                            &offsets,
-                            *alpha_mode,
-                        );
+                for metadata in self.asset_cache.metadata.values() {
+                    let asset = &self.asset_cache.assets[metadata.index];
+                    for instance in 0..metadata.instances.len() {
+                        if *alpha_mode == AlphaMode::Blend {
+                            pbr_renderer_blended.draw_asset(
+                                self.context.logical_device().logical_device(),
+                                asset,
+                                &metadata,
+                                instance,
+                                *alpha_mode,
+                            );
+                        } else {
+                            pbr_renderer.draw_asset(
+                                self.context.logical_device().logical_device(),
+                                &asset,
+                                &metadata,
+                                instance,
+                                *alpha_mode,
+                            );
+                        }
                     }
-                    offsets.texture_offset += asset.textures.len() as i32;
-                    offsets.mesh_offset += asset.number_of_meshes;
-                    offsets.index_offset += asset.indices.len() as u32;
-                    offsets.vertex_offset +=
-                        (asset.vertices.len() / GltfAsset::vertex_stride()) as u32;
                 }
             });
     }
@@ -905,12 +949,17 @@ impl PbrScene {
             joint_matrices: [glm::Mat4::identity(); UniformBufferObject::MAX_NUM_JOINTS],
         };
 
+        let mut instances = HashMap::new();
         for (name, transform) in <(Read<AssetName>, Read<Transform>)>::query().iter(world) {
+            *instances.entry(name.0.to_string()).or_insert(0) += 1;
+            let instance_count = instances[&name.0];
+
             let metadata = &self.asset_cache.metadata[&name.0];
-            let index = metadata.index;
-            let asset = &self.asset_cache.assets[index];
-            let mesh_offset = metadata.mesh_offset;
-            let joint_offset = metadata.joint_offset;
+            let instance_metadata = &metadata.instances[instance_count - 1];
+            let mesh_offset = instance_metadata.mesh_offset;
+            let joint_offset = instance_metadata.joint_offset;
+
+            let asset = &self.asset_cache.assets[metadata.index];
 
             asset.walk_mut(|node_index, graph| {
                 let global_transform =
