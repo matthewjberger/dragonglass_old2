@@ -117,9 +117,15 @@ impl FreeCamera {
 pub fn fps_camera_controls_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("fps_camera_controls")
         .read_resource::<Input>()
-        .read_resource::<System>()
+        .write_resource::<System>()
         .with_query(<Write<FreeCamera>>::query())
         .build(move |_, world, (input, system), query| {
+            if query.iter_mut(world).peekable().peek().is_some() {
+                system.mouse_grab_requested = true;
+                system.mouse_hide_requested = true;
+                system.mouse_center_requested = true;
+            }
+
             let delta_time = system.delta_time as f32;
             for mut camera in query.iter_mut(world) {
                 if input.is_key_pressed(VirtualKeyCode::W) {
@@ -201,11 +207,17 @@ impl Default for OrbitalCamera {
 pub fn orbital_camera_controls_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("orbital_camera_controls")
         .read_resource::<Input>()
-        .read_resource::<System>()
+        .write_resource::<System>()
         .with_query(<Write<OrbitalCamera>>::query())
         .build(move |_, world, (input, system), query| {
             if !input.allowed {
                 return;
+            }
+
+            if query.iter_mut(world).peekable().peek().is_some() {
+                system.mouse_grab_requested = false;
+                system.mouse_hide_requested = false;
+                system.mouse_center_requested = false;
             }
 
             let delta_time = system.delta_time as f32;

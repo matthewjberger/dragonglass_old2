@@ -1,5 +1,5 @@
 use crate::{
-    camera::OrbitalCamera,
+    camera::{FreeCamera, OrbitalCamera},
     renderer::{
         byte_slice_from,
         vulkan::{
@@ -909,12 +909,23 @@ impl PbrScene {
     }
 
     pub fn update(&mut self, world: &World, resources: &Resources, projection: glm::Mat4) {
-        let camera = &<Read<OrbitalCamera>>::query()
-            .iter(world)
-            .collect::<Vec<_>>()[0];
+        // FIXME: Rewrite camera handling code, this is hacky
 
-        let camera_position = camera.position();
-        let view = camera.view_matrix();
+        let orbital_cameras = &<Read<OrbitalCamera>>::query()
+            .iter(world)
+            .collect::<Vec<_>>();
+        let free_cameras = &<Read<FreeCamera>>::query().iter(world).collect::<Vec<_>>();
+
+        let (camera_position, view) = if !free_cameras.is_empty() {
+            (*free_cameras[0].position(), free_cameras[0].view_matrix())
+        } else if !orbital_cameras.is_empty() {
+            (
+                orbital_cameras[0].position(),
+                orbital_cameras[0].view_matrix(),
+            )
+        } else {
+            panic!("No cameras are available to render to!");
+        };
 
         let system = resources
             .get::<System>()

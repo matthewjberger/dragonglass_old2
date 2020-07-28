@@ -62,7 +62,11 @@ impl App {
         let mut world = universe.create_world();
 
         // FIXME: Add tag to mark this as the main camera
-        world.insert((), vec![(OrbitalCamera::default(),)]);
+        //world.insert((), vec![(OrbitalCamera::default(),)]);
+        let mut free_camera = FreeCamera::default();
+        free_camera.position_at(&glm::vec3(0.0, -4.0, -4.0));
+        free_camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
+        world.insert((), vec![(free_camera,)]);
 
         let mut helmets = Vec::new();
         for offset in 0..20 {
@@ -96,6 +100,20 @@ impl App {
 
                 if system.exit_requested {
                     *control_flow = ControlFlow::Exit;
+                }
+
+                let _ = window.set_cursor_grab(system.mouse_grab_requested);
+
+                let _ = window.set_cursor_visible(false);
+                gui.context_mut().io_mut().config_flags |=
+                    imgui::ConfigFlags::NO_MOUSE_CURSOR_CHANGE;
+
+                if system.mouse_center_requested {
+                    let center = system.window_center_physical();
+                    let _ = window.set_cursor_position(center);
+                    if let Some(mut input) = resources.get_mut::<Input>() {
+                        input.mouse.position = system.window_center();
+                    }
                 }
             }
 

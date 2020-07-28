@@ -13,6 +13,9 @@ pub struct System {
     pub delta_time: f64,
     pub last_frame: Instant,
     pub exit_requested: bool,
+    pub mouse_grab_requested: bool,
+    pub mouse_hide_requested: bool,
+    pub mouse_center_requested: bool,
 }
 
 impl System {
@@ -22,6 +25,9 @@ impl System {
             window_dimensions,
             delta_time: 0.01,
             exit_requested: false,
+            mouse_grab_requested: false,
+            mouse_hide_requested: false,
+            mouse_center_requested: false,
         }
     }
 
