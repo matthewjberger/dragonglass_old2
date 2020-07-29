@@ -64,19 +64,13 @@ impl App {
         // FIXME: Add tag to mark this as the main camera
         world.insert((), vec![(OrbitalCamera::default(),)]);
 
-        let mut helmets = Vec::new();
-        for offset in 0..20 {
-            let instance = (
-                Transform {
-                    translation: glm::vec3(offset as _, offset as _, offset as _),
-                    ..Default::default()
-                },
+        world.insert(
+            (),
+            vec![(
+                Transform::default(),
                 AssetName("assets/models/DamagedHelmet.glb".to_string()),
-            );
-            helmets.push(instance);
-        }
-
-        world.insert((), helmets);
+            )],
+        );
 
         let mut update_schedule = Schedule::builder()
             .add_system(fps_camera_controls_system())
@@ -133,7 +127,7 @@ impl App {
         CombinedLogger::init(vec![
             TermLogger::new(LevelFilter::max(), Config::default(), TerminalMode::Mixed),
             WriteLogger::new(
-                LevelFilter::Info,
+                LevelFilter::max(),
                 Config::default(),
                 File::create(Self::LOG_FILE)
                     .with_context(|| format!("log file path: {}", Self::LOG_FILE.to_string()))?,

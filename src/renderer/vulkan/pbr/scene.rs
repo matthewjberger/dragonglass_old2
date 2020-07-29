@@ -54,7 +54,7 @@ pub struct UniformBufferObject {
 
 impl UniformBufferObject {
     // This needs to match the defined value in the shaders
-    pub const MAX_NUM_JOINTS: usize = 1280;
+    pub const MAX_NUM_JOINTS: usize = 128;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,10 +76,10 @@ pub struct PbrPipelineData {
 }
 
 impl PbrPipelineData {
-    pub const MAX_NUMBER_OF_MESHES: usize = 10000;
+    pub const MAX_NUMBER_OF_MESHES: usize = 100;
 
     // This should match the number of textures defined in the shader
-    pub const MAX_TEXTURES: usize = 1000;
+    pub const MAX_TEXTURES: usize = 100;
 
     pub fn new(
         context: Arc<VulkanContext>,
@@ -540,7 +540,7 @@ impl EnvironmentMapSet {
         shader_cache: &mut ShaderCache,
     ) -> Self {
         debug!("Creating Brdflut");
-        let brdflut = Brdflut::new(context.clone(), command_pool);
+        let brdflut = Brdflut::new(context.clone(), command_pool, shader_cache);
 
         let cubemap_path = "assets/skyboxes/walk_of_fame/walk_of_fame.hdr";
 

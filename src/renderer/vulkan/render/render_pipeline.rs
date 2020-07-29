@@ -7,8 +7,6 @@ use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
 use std::sync::Arc;
 
-// TODO: Add a builder for this struct
-// TODO: Move shader paths into separate struct to be constructed with the builder pattern
 #[derive(Builder, Clone)]
 #[builder(setter(into))]
 pub struct RenderPipelineSettings {

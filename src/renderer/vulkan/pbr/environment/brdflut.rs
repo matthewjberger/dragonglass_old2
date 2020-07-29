@@ -1,13 +1,15 @@
 use crate::renderer::vulkan::{
     core::VulkanContext,
-    render::{DescriptorSetLayout, Framebuffer, GraphicsPipeline, PipelineLayout, RenderPass},
+    render::{
+        DescriptorSetLayout, Framebuffer, RenderPass, RenderPipeline, RenderPipelineSettingsBuilder,
+    },
     resource::{
         image::{ImageView, Sampler, Texture},
-        CommandPool, Shader,
+        CommandPool, ShaderCache, ShaderPathSetBuilder,
     },
 };
 use ash::{version::DeviceV1_0, vk};
-use std::{ffi::CString, sync::Arc};
+use std::sync::Arc;
 
 pub struct Brdflut {
     pub texture: Texture,
@@ -16,13 +18,17 @@ pub struct Brdflut {
 }
 
 impl Brdflut {
-    pub fn new(context: Arc<VulkanContext>, command_pool: &CommandPool) -> Self {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        shader_cache: &mut ShaderCache,
+    ) -> Self {
         let dimension = 512;
         let format = vk::Format::R16G16_SFLOAT;
         let texture = Self::create_texture(context.clone(), dimension, format);
         let view = Self::create_image_view(context.clone(), &texture, format);
         let sampler = Self::create_sampler(context.clone());
-        let render_pass = Self::create_render_pass(context.clone(), format);
+        let render_pass = Arc::new(Self::create_render_pass(context.clone(), format));
 
         let attachments = [view.view()];
         let create_info = vk::FramebufferCreateInfo::builder()
@@ -57,7 +63,7 @@ impl Brdflut {
 
         let device = context.logical_device().logical_device();
 
-        let pipeline = Self::create_pipeline(context.clone(), &render_pass);
+        let pipeline = Self::create_pipeline(context.clone(), shader_cache, render_pass.clone());
 
         command_pool
             .execute_command_once(context.graphics_queue(), |command_buffer| unsafe {
@@ -88,7 +94,7 @@ impl Brdflut {
                         device.cmd_bind_pipeline(
                             command_buffer,
                             vk::PipelineBindPoint::GRAPHICS,
-                            pipeline.pipeline(),
+                            pipeline.pipeline.pipeline(),
                         );
                         device.cmd_draw(command_buffer, 3, 1, 0, 0);
                     },
@@ -236,114 +242,35 @@ impl Brdflut {
         RenderPass::new(context, &create_info).unwrap()
     }
 
-    fn create_shaders(context: Arc<VulkanContext>) -> (Shader, Shader, CString) {
-        let shader_entry_point_name =
-            CString::new("main").expect("Failed to create CString for shader entry point name!");
+    fn create_pipeline(
+        context: Arc<VulkanContext>,
+        shader_cache: &mut ShaderCache,
+        render_pass: Arc<RenderPass>,
+    ) -> RenderPipeline {
+        let shader_paths = ShaderPathSetBuilder::default()
+            .vertex("assets/shaders/environment/fullscreen_triangle.vert.spv")
+            .fragment("assets/shaders/environment/genbrdflut.frag.spv")
+            .build()
+            .unwrap();
+        let shader_set = shader_cache
+            .create_shader_set(context.clone(), &shader_paths)
+            .unwrap();
 
-        let vertex_shader = Shader::from_file(
-            context.clone(),
-            "assets/shaders/environment/genbrdflut.vert.spv",
-            vk::ShaderStageFlags::VERTEX,
-            "main",
-        )
-        .expect("Failed to create vertex shader!");
-
-        let fragment_shader = Shader::from_file(
-            context,
-            "assets/shaders/environment/genbrdflut.frag.spv",
-            vk::ShaderStageFlags::FRAGMENT,
-            &"main",
-        )
-        .expect("Failed to create fragment shader!");
-
-        (vertex_shader, fragment_shader, shader_entry_point_name)
-    }
-
-    fn create_pipeline(context: Arc<VulkanContext>, render_pass: &RenderPass) -> GraphicsPipeline {
-        let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&[])
             .build();
         let descriptor_set_layout =
-            DescriptorSetLayout::new(context.clone(), layout_create_info).unwrap();
+            DescriptorSetLayout::new(context.clone(), descriptor_set_layout_create_info).unwrap();
+        let descriptor_set_layout = Arc::new(descriptor_set_layout);
 
-        let descriptor_set_layouts = [descriptor_set_layout.layout()];
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts)
-            .build();
-        let pipeline_layout =
-            PipelineLayout::new(context.clone(), pipeline_layout_create_info).unwrap();
+        let settings = RenderPipelineSettingsBuilder::default()
+            .render_pass(render_pass.clone())
+            .vertex_state_info(vk::PipelineVertexInputStateCreateInfo::builder().build())
+            .descriptor_set_layout(descriptor_set_layout)
+            .shader_set(shader_set)
+            .build()
+            .expect("Failed to create render pipeline settings");
 
-        let input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
-            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-            .build();
-
-        let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
-            .polygon_mode(vk::PolygonMode::FILL)
-            .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .line_width(1.0)
-            .build();
-
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
-            .color_write_mask(vk::ColorComponentFlags::all())
-            .blend_enable(false)
-            .build();
-        let color_blend_attachments = [color_blend_attachment];
-
-        let color_blend_state_info = vk::PipelineColorBlendStateCreateInfo::builder()
-            .logic_op_enable(false)
-            .logic_op(vk::LogicOp::COPY)
-            .attachments(&color_blend_attachments)
-            .blend_constants([0.0, 0.0, 0.0, 0.0])
-            .build();
-
-        let back_stencil_op_state = vk::StencilOpState::builder()
-            .compare_op(vk::CompareOp::LESS_OR_EQUAL)
-            .build();
-
-        let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::builder()
-            .depth_test_enable(false)
-            .depth_write_enable(false)
-            .depth_compare_op(vk::CompareOp::LESS_OR_EQUAL)
-            .front(Default::default())
-            .back(back_stencil_op_state)
-            .build();
-
-        let mut viewport_create_info = vk::PipelineViewportStateCreateInfo::default();
-        viewport_create_info.viewport_count = 1;
-        viewport_create_info.scissor_count = 1;
-
-        let multisampling_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1)
-            .build();
-
-        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-        let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo::builder()
-            .flags(vk::PipelineDynamicStateCreateFlags::empty())
-            .dynamic_states(&dynamic_states)
-            .build();
-
-        let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder().build();
-
-        let (vertex_shader, fragment_shader, _shader_entry_point_name) =
-            Self::create_shaders(context.clone());
-        let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
-
-        let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
-            .stages(&shader_state_info)
-            .vertex_input_state(&vertex_input_create_info)
-            .input_assembly_state(&input_assembly_create_info)
-            .rasterization_state(&rasterizer_create_info)
-            .multisample_state(&multisampling_create_info)
-            .depth_stencil_state(&depth_stencil_info)
-            .color_blend_state(&color_blend_state_info)
-            .viewport_state(&viewport_create_info)
-            .dynamic_state(&dynamic_state_create_info)
-            .layout(pipeline_layout.layout())
-            .render_pass(render_pass.render_pass())
-            .subpass(0)
-            .build();
-
-        GraphicsPipeline::new(context, pipeline_create_info, pipeline_layout)
+        RenderPipeline::new(context, settings)
     }
 }
