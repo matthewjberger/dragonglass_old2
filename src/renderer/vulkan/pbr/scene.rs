@@ -644,19 +644,18 @@ impl AssetCache {
                 self.assets.push(asset);
             }
 
-            // Use the asset to add offsets for an instance
+            // Create the instance
+            let instance_metadata = InstanceMetadata {
+                mesh_offset,
+                joint_offset,
+            };
+
             let asset = &self.assets[asset_metadata.index];
             asset.walk_mut(|node_index, graph| {
                 if let Some(skin) = graph[node_index].skin.as_ref() {
                     joint_offset += skin.joints.len();
                 }
             });
-
-            // Create the instance
-            let instance_metadata = InstanceMetadata {
-                mesh_offset,
-                joint_offset,
-            };
 
             // Update the mesh offset every time we create an instance
             mesh_offset += asset.number_of_meshes;
