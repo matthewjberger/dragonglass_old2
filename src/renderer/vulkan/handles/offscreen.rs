@@ -1,23 +1,34 @@
 use crate::renderer::vulkan::{
     core::VulkanContext,
-    handles::offscreen::Offscreen,
-    render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
-    resource::image::{ImageView, Texture},
+    render::{Framebuffer, RenderPass},
+    resource::image::{ImageView, Sampler, Texture, TextureBundle},
 };
 use anyhow::Result;
 use ash::vk;
 use std::sync::Arc;
 
-pub struct ForwardRenderingHandles {
+pub struct Offscreen {
     pub render_pass: Arc<RenderPass>,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
-    pub framebuffers: Vec<Framebuffer>,
-    pub offscreen: Offscreen,
+    pub framebuffer: Framebuffer,
+    pub color_texture: TextureBundle,
 }
 
-impl ForwardRenderingHandles {
-    pub fn new(context: Arc<VulkanContext>, swapchain: &Swapchain) -> Result<Self> {
+impl Offscreen {
+    pub fn new(context: Arc<VulkanContext>) -> Result<Self> {
+        let dimension = 512;
+        let format = vk::Format::R8G8B8A8_UNORM;
+
+        let texture = Self::create_texture(context.clone(), dimension, format);
+        let view = Self::create_image_view(context.clone(), &texture, format);
+        let sampler = Self::create_sampler(context.clone());
+        let color_texture = TextureBundle {
+            texture,
+            view,
+            sampler,
+        };
+
         let depth_format = context.determine_depth_format(
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
@@ -25,32 +36,35 @@ impl ForwardRenderingHandles {
 
         let render_pass = Arc::new(Self::create_render_pass(
             context.clone(),
-            &swapchain.properties(),
+            format,
             depth_format,
         ));
 
-        let swapchain_extent = swapchain.properties().extent;
+        let extent = vk::Extent2D::builder()
+            .width(dimension)
+            .height(dimension)
+            .build();
 
-        let depth_texture =
-            Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
+        let depth_texture = Self::create_depth_texture(context.clone(), extent, depth_format);
         let depth_texture_view =
             Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
 
-        let framebuffers = Self::create_framebuffers(
-            context.clone(),
-            &swapchain,
-            &depth_texture_view,
-            &render_pass,
-        );
+        let attachments = [color_texture.view.view(), depth_texture_view.view()];
+        let create_info = vk::FramebufferCreateInfo::builder()
+            .render_pass(render_pass.render_pass())
+            .attachments(&attachments)
+            .width(dimension)
+            .height(dimension)
+            .layers(1)
+            .build();
+        let framebuffer = Framebuffer::new(context.clone(), create_info).unwrap();
 
-        let offscreen = Offscreen::new(context)?;
-
-        let handles = Self {
+        let handles = Offscreen {
             render_pass,
             depth_texture,
             depth_texture_view,
-            framebuffers,
-            offscreen,
+            framebuffer,
+            color_texture,
         };
 
         Ok(handles)
@@ -58,16 +72,18 @@ impl ForwardRenderingHandles {
 
     fn create_render_pass(
         context: Arc<VulkanContext>,
-        swapchain_properties: &SwapchainProperties,
+        format: vk::Format,
         depth_format: vk::Format,
     ) -> RenderPass {
         let color_attachment_description = vk::AttachmentDescription::builder()
-            .format(swapchain_properties.format.format)
+            .format(format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .final_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .build();
 
         let depth_attachment_description = vk::AttachmentDescription::builder()
@@ -135,29 +151,6 @@ impl ForwardRenderingHandles {
         RenderPass::new(context, &create_info).unwrap()
     }
 
-    fn create_framebuffers(
-        context: Arc<VulkanContext>,
-        swapchain: &Swapchain,
-        depth_texture_view: &ImageView,
-        render_pass: &RenderPass,
-    ) -> Vec<Framebuffer> {
-        swapchain
-            .image_views()
-            .iter()
-            .map(|view| [view.view(), depth_texture_view.view()])
-            .map(|attachments| {
-                let create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(render_pass.render_pass())
-                    .attachments(&attachments)
-                    .width(swapchain.properties().extent.width)
-                    .height(swapchain.properties().extent.height)
-                    .layers(1)
-                    .build();
-                Framebuffer::new(context.clone(), create_info).unwrap()
-            })
-            .collect::<Vec<_>>()
-    }
-
     fn create_depth_texture(
         context: Arc<VulkanContext>,
         swapchain_extent: vk::Extent2D,
@@ -212,5 +205,79 @@ impl ForwardRenderingHandles {
             })
             .build();
         ImageView::new(context, create_info).unwrap()
+    }
+
+    fn create_texture(context: Arc<VulkanContext>, dimension: u32, format: vk::Format) -> Texture {
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: dimension,
+                height: dimension,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty())
+            .build();
+
+        let allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+
+        Texture::new(context, &allocation_create_info, &image_create_info).unwrap()
+    }
+
+    fn create_image_view(
+        context: Arc<VulkanContext>,
+        texture: &Texture,
+        format: vk::Format,
+    ) -> ImageView {
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture.image())
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        ImageView::new(context, create_info).unwrap()
+    }
+
+    fn create_sampler(context: Arc<VulkanContext>) -> Sampler {
+        let sampler_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .anisotropy_enable(true)
+            .max_anisotropy(1.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_WHITE)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(1.0)
+            .build();
+        Sampler::new(context, sampler_info).unwrap()
     }
 }
