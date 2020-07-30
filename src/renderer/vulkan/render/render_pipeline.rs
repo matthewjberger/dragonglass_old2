@@ -36,7 +36,7 @@ pub struct RenderPipelineSettings {
     #[builder(default)]
     pub push_constant_range: Option<vk::PushConstantRange>,
 
-    #[builder(default)]
+    #[builder(default = "vk::SampleCountFlags::TYPE_1")]
     pub rasterization_samples: vk::SampleCountFlags,
 
     #[builder(default)]

@@ -17,6 +17,7 @@ pub struct ForwardRenderingHandles {
     pub render_pass: Arc<RenderPass>,
     pub framebuffers: Vec<Framebuffer>,
     pub pipeline: Option<RenderPipeline>, // TODO: Move some of the data to a separate struct
+    pub descriptor_set_layout: Arc<DescriptorSetLayout>,
     pub descriptor_set: vk::DescriptorSet,
     pub descriptor_pool: DescriptorPool,
     context: Arc<VulkanContext>,
@@ -32,7 +33,7 @@ impl ForwardRenderingHandles {
 
         let offscreen = Offscreen::new(context.clone())?;
 
-        let descriptor_set_layout = Self::descriptor_set_layout(context.clone());
+        let descriptor_set_layout = Arc::new(Self::descriptor_set_layout(context.clone()));
         let descriptor_pool = Self::create_descriptor_pool(context.clone());
         let descriptor_set = descriptor_pool
             .allocate_descriptor_sets(descriptor_set_layout.layout(), 1)
@@ -44,6 +45,7 @@ impl ForwardRenderingHandles {
             context,
             framebuffers,
             pipeline: None,
+            descriptor_set_layout,
             descriptor_set,
             descriptor_pool,
         };
@@ -122,7 +124,7 @@ impl ForwardRenderingHandles {
         let settings = RenderPipelineSettingsBuilder::default()
             .render_pass(self.render_pass.clone())
             .vertex_state_info(vk::PipelineVertexInputStateCreateInfo::builder().build())
-            .descriptor_set_layout(Arc::new(Self::descriptor_set_layout(self.context.clone())))
+            .descriptor_set_layout(self.descriptor_set_layout.clone())
             .shader_set(shader_set)
             .build()
             .expect("Failed to create render pipeline settings");

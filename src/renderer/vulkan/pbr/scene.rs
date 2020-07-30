@@ -73,6 +73,7 @@ pub struct PbrPipelineData {
     pub dynamic_alignment: u64,
     pub descriptor_set: vk::DescriptorSet,
     pub dummy: DummyImage,
+    pub descriptor_set_layout: Arc<DescriptorSetLayout>,
 }
 
 impl PbrPipelineData {
@@ -87,7 +88,7 @@ impl PbrPipelineData {
         textures: &[&TextureBundle],
         environment_maps: &EnvironmentMapSet,
     ) -> Self {
-        let descriptor_set_layout = Self::descriptor_set_layout(context.clone());
+        let descriptor_set_layout = Arc::new(Self::descriptor_set_layout(context.clone()));
         let descriptor_pool = Self::create_descriptor_pool(context.clone());
         let descriptor_set = descriptor_pool
             .allocate_descriptor_sets(descriptor_set_layout.layout(), 1)
@@ -118,6 +119,7 @@ impl PbrPipelineData {
             descriptor_set,
             dynamic_alignment,
             dummy: DummyImage::new(context.clone(), &command_pool),
+            descriptor_set_layout,
         };
 
         data.update_descriptor_set(context, textures, environment_maps);
@@ -777,13 +779,10 @@ impl PbrScene {
             .create_shader_set(self.context.clone(), &shader_paths)
             .unwrap();
 
-        let descriptor_set_layout =
-            Arc::new(PbrPipelineData::descriptor_set_layout(self.context.clone()));
-
         let mut settings = RenderPipelineSettingsBuilder::default()
             .render_pass(render_pass.clone())
             .vertex_state_info(vertex_state_info)
-            .descriptor_set_layout(descriptor_set_layout)
+            .descriptor_set_layout(self.pbr_pipeline_data.descriptor_set_layout.clone())
             .shader_set(shader_set)
             .rasterization_samples(samples)
             .sample_shading_enabled(true)
