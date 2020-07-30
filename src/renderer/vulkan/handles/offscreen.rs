@@ -17,7 +17,7 @@ pub struct Offscreen {
 }
 
 impl Offscreen {
-    pub const DIMENSION: u32 = 512;
+    pub const DIMENSION: u32 = 2048;
     pub const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
     pub fn new(context: Arc<VulkanContext>) -> Result<Self> {

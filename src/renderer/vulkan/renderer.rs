@@ -242,12 +242,12 @@ impl Renderer for VulkanRenderer {
             .map(|asset_name| asset_name.0.to_string())
             .collect::<Vec<_>>();
 
-        let render_pass = self.handles.as_ref().unwrap().render_pass.clone();
+        let offscreen_render_pass = self.handles.as_ref().unwrap().offscreen.render_pass.clone();
         let scene_data = PbrScene::new(
             self.context.clone(),
             &self.transient_command_pool,
             &mut self.shader_cache,
-            render_pass,
+            offscreen_render_pass,
             asset_names,
             vk::SampleCountFlags::TYPE_1,
         );
