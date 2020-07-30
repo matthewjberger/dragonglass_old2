@@ -62,9 +62,6 @@ impl GuiRenderer {
             TextureBundle::new(context.clone(), &command_pool, &atlas_texture_description).unwrap()
         };
 
-        // let mut fonts = imgui.fonts();
-        // fonts.tex_id = TextureId::from(0);
-
         Self::update_descriptor_set(context.clone(), descriptor_set, &font_texture);
 
         let mut gui_renderer = Self {
@@ -261,7 +258,7 @@ impl GuiRenderer {
         self.geometry_buffer = Some(resized_buffer);
         // }
 
-        // // FIXME: resize vertex and index buffers separately
+        // // FIXME: resize vertex and index buffers separately and append vertices
         // if draw_data.total_vtx_count as u32
         //     > self.geometry_buffer.as_ref().unwrap().number_of_vertices
         // {
