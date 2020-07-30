@@ -80,7 +80,7 @@ impl App {
 
         let mut gui = Gui::new(&window);
         let mut renderer = Renderer::create_backend(&Backend::Vulkan, &mut window)?;
-        renderer.initialize(&world, &resources, &mut gui.context_mut());
+        renderer.initialize(&world, &mut gui.context_mut());
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Poll;

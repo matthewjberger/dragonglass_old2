@@ -1,5 +1,6 @@
 use crate::renderer::vulkan::{
     core::{CurrentFrameSynchronization, VulkanContext},
+    render::{Framebuffer, RenderPass},
     resource::image::ImageView,
 };
 use anyhow::Result;
@@ -296,6 +297,27 @@ Creating swapchain.
             .build();
 
         unsafe { self.swapchain.queue_present(present_queue, &present_info) }
+    }
+
+    pub fn create_framebuffers(
+        &self,
+        context: Arc<VulkanContext>,
+        render_pass: Arc<RenderPass>,
+    ) -> Vec<Framebuffer> {
+        self.image_views()
+            .iter()
+            .map(|view| [view.view()])
+            .map(|attachments| {
+                let create_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(render_pass.render_pass())
+                    .attachments(&attachments)
+                    .width(self.swapchain_properties.extent.width)
+                    .height(self.swapchain_properties.extent.height)
+                    .layers(1)
+                    .build();
+                Framebuffer::new(context.clone(), create_info).unwrap()
+            })
+            .collect::<Vec<_>>()
     }
 }
 

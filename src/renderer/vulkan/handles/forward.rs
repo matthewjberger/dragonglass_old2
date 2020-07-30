@@ -1,68 +1,59 @@
 use crate::renderer::vulkan::{
     core::VulkanContext,
     handles::offscreen::Offscreen,
-    render::{Framebuffer, RenderPass, Swapchain, SwapchainProperties},
-    resource::image::{ImageView, Texture},
+    render::{
+        DescriptorPool, DescriptorSetLayout, Framebuffer, RenderPass, RenderPipeline,
+        RenderPipelineSettingsBuilder, Swapchain,
+    },
+    resource::{ShaderCache, ShaderPathSetBuilder},
 };
 use anyhow::Result;
-use ash::vk;
+use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
+// TODO: Rename to something related to post-processing
 pub struct ForwardRenderingHandles {
-    pub render_pass: Arc<RenderPass>,
-    pub depth_texture: Texture,
-    pub depth_texture_view: ImageView,
-    pub framebuffers: Vec<Framebuffer>,
     pub offscreen: Offscreen,
+    pub render_pass: Arc<RenderPass>,
+    pub framebuffers: Vec<Framebuffer>,
+    pub pipeline: Option<RenderPipeline>, // TODO: Move some of the data to a separate struct
+    pub descriptor_set: vk::DescriptorSet,
+    pub descriptor_pool: DescriptorPool,
+    context: Arc<VulkanContext>,
 }
 
 impl ForwardRenderingHandles {
     pub fn new(context: Arc<VulkanContext>, swapchain: &Swapchain) -> Result<Self> {
-        let depth_format = context.determine_depth_format(
-            vk::ImageTiling::OPTIMAL,
-            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
-        );
+        let format = swapchain.properties().format.format;
 
-        let render_pass = Arc::new(Self::create_render_pass(
-            context.clone(),
-            &swapchain.properties(),
-            depth_format,
-        ));
+        let render_pass = Arc::new(Self::create_render_pass(context.clone(), format));
 
-        let swapchain_extent = swapchain.properties().extent;
+        let framebuffers = swapchain.create_framebuffers(context.clone(), render_pass.clone());
 
-        let depth_texture =
-            Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
-        let depth_texture_view =
-            Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
+        let offscreen = Offscreen::new(context.clone())?;
 
-        let framebuffers = Self::create_framebuffers(
-            context.clone(),
-            &swapchain,
-            &depth_texture_view,
-            &render_pass,
-        );
-
-        let offscreen = Offscreen::new(context)?;
+        let descriptor_set_layout = Self::descriptor_set_layout(context.clone());
+        let descriptor_pool = Self::create_descriptor_pool(context.clone());
+        let descriptor_set = descriptor_pool
+            .allocate_descriptor_sets(descriptor_set_layout.layout(), 1)
+            .unwrap()[0];
 
         let handles = Self {
             render_pass,
-            depth_texture,
-            depth_texture_view,
-            framebuffers,
             offscreen,
+            context,
+            framebuffers,
+            pipeline: None,
+            descriptor_set,
+            descriptor_pool,
         };
 
         Ok(handles)
     }
 
-    fn create_render_pass(
-        context: Arc<VulkanContext>,
-        swapchain_properties: &SwapchainProperties,
-        depth_format: vk::Format,
-    ) -> RenderPass {
+    fn create_render_pass(context: Arc<VulkanContext>, format: vk::Format) -> RenderPass {
         let color_attachment_description = vk::AttachmentDescription::builder()
-            .format(swapchain_properties.format.format)
+            .format(format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -70,18 +61,7 @@ impl ForwardRenderingHandles {
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .build();
 
-        let depth_attachment_description = vk::AttachmentDescription::builder()
-            .format(depth_format)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .build();
-
-        let attachment_descriptions = [color_attachment_description, depth_attachment_description];
+        let attachment_descriptions = [color_attachment_description];
 
         let color_attachment_reference = vk::AttachmentReference::builder()
             .attachment(0)
@@ -89,15 +69,9 @@ impl ForwardRenderingHandles {
             .build();
         let color_attachment_references = [color_attachment_reference];
 
-        let depth_attachment_reference = vk::AttachmentReference::builder()
-            .attachment(1)
-            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .build();
-
         let subpass_description = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
             .color_attachments(&color_attachment_references)
-            .depth_stencil_attachment(&depth_attachment_reference)
             .build();
         let subpass_descriptions = [subpass_description];
 
@@ -135,82 +109,108 @@ impl ForwardRenderingHandles {
         RenderPass::new(context, &create_info).unwrap()
     }
 
-    fn create_framebuffers(
-        context: Arc<VulkanContext>,
-        swapchain: &Swapchain,
-        depth_texture_view: &ImageView,
-        render_pass: &RenderPass,
-    ) -> Vec<Framebuffer> {
-        swapchain
-            .image_views()
-            .iter()
-            .map(|view| [view.view(), depth_texture_view.view()])
-            .map(|attachments| {
-                let create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(render_pass.render_pass())
-                    .attachments(&attachments)
-                    .width(swapchain.properties().extent.width)
-                    .height(swapchain.properties().extent.height)
-                    .layers(1)
-                    .build();
-                Framebuffer::new(context.clone(), create_info).unwrap()
-            })
-            .collect::<Vec<_>>()
+    pub fn recreate_pipeline(&mut self, shader_cache: &mut ShaderCache) {
+        let shader_paths = ShaderPathSetBuilder::default()
+            .vertex("assets/shaders/environment/fullscreen_triangle.vert.spv")
+            .fragment("assets/shaders/environment/post_process.frag.spv")
+            .build()
+            .unwrap();
+        let shader_set = shader_cache
+            .create_shader_set(self.context.clone(), &shader_paths)
+            .unwrap();
+
+        let settings = RenderPipelineSettingsBuilder::default()
+            .render_pass(self.render_pass.clone())
+            .vertex_state_info(vk::PipelineVertexInputStateCreateInfo::builder().build())
+            .descriptor_set_layout(Arc::new(Self::descriptor_set_layout(self.context.clone())))
+            .shader_set(shader_set)
+            .build()
+            .expect("Failed to create render pipeline settings");
+
+        self.pipeline = None;
+        self.pipeline = Some(RenderPipeline::new(self.context.clone(), settings));
     }
 
-    fn create_depth_texture(
-        context: Arc<VulkanContext>,
-        swapchain_extent: vk::Extent2D,
-        depth_format: vk::Format,
-    ) -> Texture {
-        let image_create_info = vk::ImageCreateInfo::builder()
-            .image_type(vk::ImageType::TYPE_2D)
-            .extent(vk::Extent3D {
-                width: swapchain_extent.width,
-                height: swapchain_extent.height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .format(depth_format)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .flags(vk::ImageCreateFlags::empty())
+    fn descriptor_set_layout(context: Arc<VulkanContext>) -> DescriptorSetLayout {
+        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
+        let bindings = [sampler_binding];
+        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&bindings)
+            .build();
+        let descriptor_set_layout =
+            DescriptorSetLayout::new(context.clone(), descriptor_set_layout_create_info).unwrap();
+        descriptor_set_layout
+    }
 
-        let image_allocation_create_info = vk_mem::AllocationCreateInfo {
-            usage: vk_mem::MemoryUsage::GpuOnly,
-            ..Default::default()
+    fn create_descriptor_pool(context: Arc<VulkanContext>) -> DescriptorPool {
+        let sampler_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
         };
-        Texture::new(context, &image_allocation_create_info, &image_create_info).unwrap()
+
+        let pool_sizes = [sampler_pool_size];
+
+        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&pool_sizes)
+            .max_sets(1)
+            .build();
+
+        DescriptorPool::new(context, pool_info).unwrap()
     }
 
-    fn create_depth_texture_view(
-        context: Arc<VulkanContext>,
-        depth_texture: &Texture,
-        depth_format: vk::Format,
-    ) -> ImageView {
-        let create_info = vk::ImageViewCreateInfo::builder()
-            .image(depth_texture.image())
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(depth_format)
-            .components(vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: vk::ComponentSwizzle::IDENTITY,
-            })
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::DEPTH,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
+    fn update_descriptor_set(&self) {
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(self.offscreen.color_texture.view.view())
+            .sampler(self.offscreen.color_texture.sampler.sampler())
             .build();
-        ImageView::new(context, create_info).unwrap()
+        let image_infos = [image_info];
+
+        let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_infos)
+            .build();
+
+        let descriptor_writes = [sampler_descriptor_write];
+
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .update_descriptor_sets(&descriptor_writes, &[])
+        }
+    }
+
+    pub fn issue_commands(&self, command_buffer: vk::CommandBuffer) {
+        let device = self.context.logical_device().logical_device();
+
+        if let Some(pipeline) = self.pipeline.as_ref() {
+            pipeline.bind(device, command_buffer);
+
+            unsafe {
+                device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.pipeline.layout(),
+                    0,
+                    &[self.descriptor_set],
+                    &[],
+                );
+            }
+
+            self.update_descriptor_set();
+
+            unsafe {
+                device.cmd_draw(command_buffer, 3, 1, 0, 0);
+            }
+        }
     }
 }

@@ -6,7 +6,7 @@ use crate::{
                 VulkanContext,
             },
             gui::GuiRenderer,
-            handles::ForwardRenderingHandles,
+            handles::{ForwardRenderingHandles, Offscreen},
             pbr::PbrScene,
             render::{RenderPass, Swapchain},
             resource::{CommandPool, ShaderCache},
@@ -56,7 +56,10 @@ impl VulkanRenderer {
 
         let swapchain = Swapchain::new(context.clone(), dimensions)?;
 
-        let handles = ForwardRenderingHandles::new(context.clone(), &swapchain).unwrap();
+        let mut shader_cache = ShaderCache::default();
+
+        let mut handles = ForwardRenderingHandles::new(context.clone(), &swapchain).unwrap();
+        handles.recreate_pipeline(&mut shader_cache);
 
         let renderer = Self {
             context,
@@ -67,7 +70,7 @@ impl VulkanRenderer {
             handles: Some(handles),
             current_frame: 0,
             scene: None,
-            shader_cache: ShaderCache::default(),
+            shader_cache,
             gui_renderer: None,
         };
 
@@ -90,8 +93,9 @@ impl VulkanRenderer {
         self.swapchain = Some(swapchain);
 
         self.handles = None;
-        let handles = ForwardRenderingHandles::new(self.context.clone(), self.swapchain())
+        let mut handles = ForwardRenderingHandles::new(self.context.clone(), self.swapchain())
             .expect("Failed to create strategy handles");
+        handles.recreate_pipeline(&mut self.shader_cache);
         self.handles = Some(handles);
 
         let extent = self.swapchain().properties().extent;
@@ -143,10 +147,49 @@ impl VulkanRenderer {
 
         let context = self.context.clone();
         let render_pass = self.handles.as_ref().unwrap().render_pass.render_pass();
+
+        let (offscreen_framebuffer, offscreen_render_pass) = {
+            let offscreen = &self.handles.as_ref().unwrap().offscreen;
+
+            (
+                offscreen.framebuffer.framebuffer(),
+                offscreen.render_pass.render_pass(),
+            )
+        };
+
         context.logical_device().record_command_buffer(
             command_buffer,
             vk::CommandBufferUsageFlags::SIMULTANEOUS_USE,
             || {
+                // Render the scene
+                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    .render_pass(offscreen_render_pass)
+                    .framebuffer(offscreen_framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: Offscreen::extent(),
+                    })
+                    .clear_values(&clear_values)
+                    .build();
+
+                RenderPass::record(
+                    context.clone(),
+                    command_buffer,
+                    &render_pass_begin_info,
+                    || {
+                        context
+                            .logical_device()
+                            .update_viewport(command_buffer, Offscreen::extent());
+
+                        if let Some(scene) = self.scene.as_mut() {
+                            scene.issue_commands(command_buffer).unwrap();
+                        } else {
+                            warn!("Scene not loaded!");
+                        }
+                    },
+                );
+
+                // Post-Processing and Gui
                 let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                     .render_pass(render_pass)
                     .framebuffer(framebuffer)
@@ -166,10 +209,8 @@ impl VulkanRenderer {
                             .logical_device()
                             .update_viewport(command_buffer, *extent);
 
-                        if let Some(scene) = self.scene.as_mut() {
-                            scene.issue_commands(command_buffer).unwrap();
-                        } else {
-                            warn!("Scene not loaded!");
+                        if let Some(handles) = self.handles.as_ref() {
+                            handles.issue_commands(command_buffer);
                         }
 
                         if let Some(gui_renderer) = self.gui_renderer.as_mut() {
@@ -195,7 +236,7 @@ impl Drop for VulkanRenderer {
 }
 
 impl Renderer for VulkanRenderer {
-    fn initialize(&mut self, world: &World, resources: &Resources, mut imgui: &mut Context) {
+    fn initialize(&mut self, world: &World, mut imgui: &mut Context) {
         let asset_names = &<Read<AssetName>>::query()
             .iter(world)
             .map(|asset_name| asset_name.0.to_string())

@@ -7,6 +7,7 @@ use anyhow::Result;
 use ash::vk;
 use std::sync::Arc;
 
+// TODO: Rename this to offscreen forward or something similar
 pub struct Offscreen {
     pub render_pass: Arc<RenderPass>,
     pub depth_texture: Texture,
@@ -16,12 +17,12 @@ pub struct Offscreen {
 }
 
 impl Offscreen {
-    pub fn new(context: Arc<VulkanContext>) -> Result<Self> {
-        let dimension = 512;
-        let format = vk::Format::R8G8B8A8_UNORM;
+    pub const DIMENSION: u32 = 512;
+    pub const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 
-        let texture = Self::create_texture(context.clone(), dimension, format);
-        let view = Self::create_image_view(context.clone(), &texture, format);
+    pub fn new(context: Arc<VulkanContext>) -> Result<Self> {
+        let texture = Self::create_texture(context.clone(), Self::DIMENSION, Self::FORMAT);
+        let view = Self::create_image_view(context.clone(), &texture, Self::FORMAT);
         let sampler = Self::create_sampler(context.clone());
         let color_texture = TextureBundle {
             texture,
@@ -36,13 +37,13 @@ impl Offscreen {
 
         let render_pass = Arc::new(Self::create_render_pass(
             context.clone(),
-            format,
+            Self::FORMAT,
             depth_format,
         ));
 
         let extent = vk::Extent2D::builder()
-            .width(dimension)
-            .height(dimension)
+            .width(Self::DIMENSION)
+            .height(Self::DIMENSION)
             .build();
 
         let depth_texture = Self::create_depth_texture(context.clone(), extent, depth_format);
@@ -53,8 +54,8 @@ impl Offscreen {
         let create_info = vk::FramebufferCreateInfo::builder()
             .render_pass(render_pass.render_pass())
             .attachments(&attachments)
-            .width(dimension)
-            .height(dimension)
+            .width(Self::DIMENSION)
+            .height(Self::DIMENSION)
             .layers(1)
             .build();
         let framebuffer = Framebuffer::new(context.clone(), create_info).unwrap();
@@ -68,6 +69,13 @@ impl Offscreen {
         };
 
         Ok(handles)
+    }
+
+    pub fn extent() -> vk::Extent2D {
+        vk::Extent2D {
+            width: Self::DIMENSION,
+            height: Self::DIMENSION,
+        }
     }
 
     fn create_render_pass(

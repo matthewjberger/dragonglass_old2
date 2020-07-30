@@ -241,7 +241,7 @@ impl PbrPipelineData {
 
     fn update_descriptor_set(
         &self,
-        context: Arc<VulkanContext>,
+        context: Arc<VulkanContext>, // TODO: This struct can store a clone of the context Arc
         textures: &[&TextureBundle],
         environment_maps: &EnvironmentMapSet,
     ) {
@@ -357,6 +357,7 @@ impl PbrPipelineData {
             .image_info(&brdflut_image_infos)
             .build();
 
+        // TODO: This probably doesn't need to be a vec, just a regular slice
         let descriptor_writes = vec![
             ubo_descriptor_write,
             dynamic_ubo_descriptor_write,
@@ -786,6 +787,7 @@ impl PbrScene {
             .shader_set(shader_set)
             .rasterization_samples(samples)
             .sample_shading_enabled(true)
+            .cull_mode(vk::CullModeFlags::NONE)
             .push_constant_range(push_constant_range)
             .build()
             .expect("Failed to create render pipeline settings");

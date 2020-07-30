@@ -1,4 +1,4 @@
-pub use self::forward::*;
+pub use self::{forward::*, offscreen::*};
 
 mod forward;
 mod offscreen;
