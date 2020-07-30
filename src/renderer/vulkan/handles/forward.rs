@@ -50,6 +50,8 @@ impl ForwardRenderingHandles {
             descriptor_pool,
         };
 
+        handles.update_descriptor_set();
+
         Ok(handles)
     }
 
@@ -152,7 +154,7 @@ impl ForwardRenderingHandles {
     fn create_descriptor_pool(context: Arc<VulkanContext>) -> DescriptorPool {
         let sampler_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 1,
+            descriptor_count: 6,
         };
 
         let pool_sizes = [sampler_pool_size];
@@ -206,11 +208,7 @@ impl ForwardRenderingHandles {
                     &[self.descriptor_set],
                     &[],
                 );
-            }
 
-            self.update_descriptor_set();
-
-            unsafe {
                 device.cmd_draw(command_buffer, 3, 1, 0, 0);
             }
         }
