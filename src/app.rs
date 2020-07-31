@@ -9,14 +9,14 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use legion::prelude::*;
-use log::debug;
+use log::{debug, warn};
 use nalgebra_glm as glm;
 use serde::Deserialize;
 use simplelog::*;
 use std::fs::File;
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, VirtualKeyCode},
+    event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -117,6 +117,30 @@ impl App {
                         .expect("Failed to render gui frame!");
 
                     renderer.render(&world, &resources, &draw_data);
+                }
+                Event::WindowEvent {
+                    event: WindowEvent::DroppedFile(path),
+                    ..
+                } => {
+                    if let Some(raw_path) = path.to_str() {
+                        if let Some(extension) = path.extension() {
+                            match extension.to_str() {
+                                Some("glb") | Some("gltf") => {
+                                    world.insert(
+                                        (),
+                                        vec![(
+                                            Transform::default(),
+                                            AssetName(raw_path.to_string()),
+                                        )],
+                                    );
+                                }
+                                _ => warn!(
+                                "File extension {:#?} is not a valid '.glb' or '.gltf' extension",
+                                extension
+                            ),
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
