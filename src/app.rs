@@ -64,14 +64,6 @@ impl App {
         // FIXME: Add tag to mark this as the main camera
         world.insert((), vec![(OrbitalCamera::default(),)]);
 
-        world.insert(
-            (),
-            vec![(
-                Transform::default(),
-                AssetName("assets/models/DamagedHelmet.glb".to_string()),
-            )],
-        );
-
         let mut update_schedule = Schedule::builder()
             .add_system(fps_camera_controls_system())
             .add_system(orbital_camera_controls_system())
