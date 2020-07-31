@@ -116,6 +116,7 @@ impl Drop for Buffer {
     }
 }
 
+// TODO: Allow creating empty geometry buffers
 pub struct GeometryBuffer {
     pub vertex_buffer: Buffer,
     pub index_buffer: Option<Buffer>,
