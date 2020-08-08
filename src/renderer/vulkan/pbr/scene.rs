@@ -15,7 +15,7 @@ use crate::{
             },
             resource::{
                 image::{DummyImage, TextureBundle},
-                Buffer, CommandPool, GeometryBuffer, ShaderCache, ShaderPathSetBuilder,
+                Buffer, CommandPool, NewGeometryBuffer, ShaderCache, ShaderPathSetBuilder,
             },
         },
         AssetName, Transform,
@@ -241,7 +241,7 @@ impl PbrPipelineData {
         DescriptorPool::new(context, pool_info).unwrap()
     }
 
-    fn update_descriptor_set(
+    pub fn update_descriptor_set(
         &self,
         context: Arc<VulkanContext>, // TODO: This struct can store a clone of the context Arc
         textures: &[&TextureBundle],
@@ -652,6 +652,7 @@ impl AssetCache {
                 mesh_offset,
                 joint_offset,
             };
+            asset_metadata.instances.push(instance_metadata);
 
             let asset = &self.assets[asset_metadata.index];
             asset.walk_mut(|node_index, graph| {
@@ -662,29 +663,11 @@ impl AssetCache {
 
             // Update the mesh offset every time we create an instance
             mesh_offset += asset.number_of_meshes;
-            asset_metadata.instances.push(instance_metadata);
         }
 
         println!("Metadata: {:#?}", metadata);
 
         self.metadata = metadata;
-    }
-
-    // FIXME: Consider storing the geometry buffer and textures inside the AssetCache object
-    pub fn create_geometry_buffer(&self, command_pool: &CommandPool) -> GeometryBuffer {
-        let vertices = self
-            .assets
-            .iter()
-            .flat_map(|asset| asset.vertices.iter().copied())
-            .collect::<Vec<_>>();
-
-        let indices = self
-            .assets
-            .iter()
-            .flat_map(|asset| asset.indices.iter().copied())
-            .collect::<Vec<_>>();
-
-        GeometryBuffer::new(&command_pool, &vertices, Some(&indices))
     }
 
     pub fn textures(&self) -> Vec<&TextureBundle> {
@@ -697,8 +680,8 @@ impl AssetCache {
 
 pub struct PbrScene {
     context: Arc<VulkanContext>,
-    asset_geometry_buffer: GeometryBuffer,
-    _environment_maps: EnvironmentMapSet,
+    asset_geometry_buffer: NewGeometryBuffer,
+    environment_maps: EnvironmentMapSet,
     skybox_pipeline: Option<RenderPipeline>,
     skybox_pipeline_data: SkyboxPipelineData,
     pbr_pipeline: Option<RenderPipeline>,
@@ -721,7 +704,8 @@ impl PbrScene {
         let environment_maps = EnvironmentMapSet::new(context.clone(), command_pool, shader_cache);
 
         let asset_cache = AssetCache::new(context.clone(), asset_names, command_pool);
-        let asset_geometry_buffer = asset_cache.create_geometry_buffer(&command_pool);
+        let asset_geometry_buffer =
+            NewGeometryBuffer::new(context.clone(), &command_pool, 6400000, 1000000).unwrap();
 
         let pbr_pipeline_data = PbrPipelineData::new(
             context.clone(),
@@ -739,7 +723,7 @@ impl PbrScene {
         let mut pbr_scene_data = Self {
             context,
             asset_geometry_buffer,
-            _environment_maps: environment_maps,
+            environment_maps,
             skybox_pipeline: None,
             skybox_pipeline_data,
             pbr_pipeline: None,
@@ -858,11 +842,7 @@ impl PbrScene {
                 .logical_device()
                 .cmd_bind_index_buffer(
                     command_buffer,
-                    self.asset_geometry_buffer
-                        .index_buffer
-                        .as_ref()
-                        .expect("Failed to get an index buffer!")
-                        .buffer(),
+                    self.asset_geometry_buffer.index_buffer.buffer(),
                     0,
                     vk::IndexType::UINT32,
                 );
@@ -908,7 +888,13 @@ impl PbrScene {
             });
     }
 
-    pub fn update(&mut self, world: &World, resources: &Resources, projection: glm::Mat4) {
+    pub fn update(
+        &mut self,
+        world: &World,
+        resources: &Resources,
+        projection: glm::Mat4,
+        command_pool: &CommandPool,
+    ) {
         let camera = &<Read<OrbitalCamera>>::query()
             .iter(world)
             .collect::<Vec<_>>()[0];
@@ -949,10 +935,38 @@ impl PbrScene {
             joint_matrices: [glm::Mat4::identity(); UniformBufferObject::MAX_NUM_JOINTS],
         };
 
+        let asset_names = <Read<AssetName>>::query()
+            .iter(world)
+            .map(|name| name.0.to_string())
+            .collect::<Vec<_>>();
+
         let mut instances = HashMap::new();
         for (name, transform) in <(Read<AssetName>, Read<Transform>)>::query().iter(world) {
             *instances.entry(name.0.to_string()).or_insert(0) += 1;
             let instance_count = instances[&name.0];
+
+            if !self.asset_cache.metadata.contains_key(&name.0) {
+                self.asset_cache
+                    .generate_metadata(&asset_names, command_pool);
+                let asset = &self.asset_cache.assets[self.asset_cache.metadata[&name.0].index];
+                self.asset_geometry_buffer.append_vertices(&asset.vertices);
+                self.asset_geometry_buffer.append_indices(&asset.indices);
+                self.pbr_pipeline_data.update_descriptor_set(
+                    self.context.clone(),
+                    &self
+                        .asset_cache
+                        .assets
+                        .iter()
+                        .flat_map(|asset| &asset.textures)
+                        .collect::<Vec<_>>(),
+                    &self.environment_maps,
+                );
+            }
+
+            if self.asset_cache.metadata[&name.0].instances.len() < instance_count - 1 {
+                self.asset_cache
+                    .generate_metadata(&asset_names, command_pool);
+            }
 
             let metadata = &self.asset_cache.metadata[&name.0];
             let instance_metadata = &metadata.instances[instance_count - 1];

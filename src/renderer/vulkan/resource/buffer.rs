@@ -180,3 +180,75 @@ impl GeometryBuffer {
         }
     }
 }
+
+pub struct NewGeometryBuffer {
+    pub vertex_buffer: Buffer,
+    pub vertex_offset: usize,
+    pub index_buffer: Buffer,
+    pub index_offset: usize,
+    context: Arc<VulkanContext>,
+}
+
+impl NewGeometryBuffer {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        vertex_buffer_size: usize,
+        index_buffer_size: usize,
+    ) -> Result<Self> {
+        let vertex_buffer = Buffer::new_mapped_basic(
+            context.clone(),
+            vertex_buffer_size as _,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk_mem::MemoryUsage::CpuToGpu,
+        )?;
+
+        let index_buffer = Buffer::new_mapped_basic(
+            context.clone(),
+            index_buffer_size as _,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            vk_mem::MemoryUsage::CpuToGpu,
+        )?;
+
+        let geometry_buffer = Self {
+            vertex_buffer,
+            vertex_offset: 0,
+            index_buffer,
+            index_offset: 0,
+            context,
+        };
+
+        Ok(geometry_buffer)
+    }
+
+    pub fn append_vertices<T: Copy>(&mut self, vertices: &[T]) -> Result<()> {
+        // TODO: Handle writing off the end
+        self.vertex_buffer
+            .upload_to_buffer(&vertices, self.vertex_offset)?;
+        self.vertex_offset += vertices.len() * std::mem::size_of::<T>();
+        Ok(())
+    }
+
+    pub fn append_indices(&mut self, indices: &[u32]) -> Result<()> {
+        // TODO: Handle writing off the end
+        self.index_buffer
+            .upload_to_buffer(&indices, self.vertex_offset)?;
+        self.index_offset += indices.len() * std::mem::size_of::<u32>();
+        Ok(())
+    }
+
+    pub fn bind(&self, device: &ash::Device, command_buffer: vk::CommandBuffer) {
+        let offsets = [0];
+        let vertex_buffers = [self.vertex_buffer.buffer()];
+
+        unsafe {
+            device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+            device.cmd_bind_index_buffer(
+                command_buffer,
+                self.index_buffer.buffer(),
+                0,
+                vk::IndexType::UINT32,
+            );
+        }
+    }
+}

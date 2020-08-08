@@ -278,10 +278,12 @@ impl Renderer for VulkanRenderer {
         );
 
         // FIXME: Move this to the system struct
-        self.scene
-            .as_mut()
-            .unwrap()
-            .update(world, resources, projection);
+        self.scene.as_mut().unwrap().update(
+            world,
+            resources,
+            projection,
+            &self.transient_command_pool,
+        );
 
         let system = resources
             .get::<System>()
