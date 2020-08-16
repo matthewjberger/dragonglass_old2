@@ -68,8 +68,7 @@ impl RenderPipeline {
 
         let input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-            .primitive_restart_enable(false)
-            .build();
+            .primitive_restart_enable(false);
 
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
             .depth_clamp_enable(false)
@@ -81,16 +80,14 @@ impl RenderPipeline {
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)
-            .depth_bias_slope_factor(0.0)
-            .build();
+            .depth_bias_slope_factor(0.0);
 
         let multisampling_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
             .sample_shading_enable(settings.sample_shading_enabled)
             .rasterization_samples(settings.rasterization_samples)
             .min_sample_shading(0.2)
             .alpha_to_coverage_enable(false)
-            .alpha_to_one_enable(false)
-            .build();
+            .alpha_to_one_enable(false);
 
         let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::builder()
             .depth_test_enable(settings.depth_test_enabled)
@@ -101,8 +98,7 @@ impl RenderPipeline {
             .max_depth_bounds(1.0)
             .stencil_test_enable(settings.stencil_test_enabled)
             .front(settings.stencil_front_state)
-            .back(settings.stencil_back_state)
-            .build();
+            .back(settings.stencil_back_state);
 
         let color_blend_attachments = if settings.blended {
             Self::create_color_blend_attachments_blended()
@@ -114,8 +110,7 @@ impl RenderPipeline {
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
             .attachments(&color_blend_attachments)
-            .blend_constants([0.0, 0.0, 0.0, 0.0])
-            .build();
+            .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
         let pipeline_layout = Self::create_pipeline_layout(context.clone(), &settings);
 
@@ -126,8 +121,7 @@ impl RenderPipeline {
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo::builder()
             .flags(vk::PipelineDynamicStateCreateFlags::empty())
-            .dynamic_states(&dynamic_states)
-            .build();
+            .dynamic_states(&dynamic_states);
 
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_state_info)
@@ -141,10 +135,9 @@ impl RenderPipeline {
             .dynamic_state(&dynamic_state_create_info)
             .layout(pipeline_layout.layout())
             .render_pass(settings.render_pass.render_pass())
-            .subpass(0)
-            .build();
+            .subpass(0);
 
-        let pipeline = GraphicsPipeline::new(context, pipeline_create_info, pipeline_layout);
+        let pipeline = GraphicsPipeline::new(context, *pipeline_create_info, pipeline_layout);
 
         Self { pipeline, settings }
     }
@@ -158,9 +151,8 @@ impl RenderPipeline {
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-            .alpha_blend_op(vk::BlendOp::ADD)
-            .build();
-        [color_blend_attachment]
+            .alpha_blend_op(vk::BlendOp::ADD);
+        [*color_blend_attachment]
     }
 
     pub fn create_color_blend_attachments_blended() -> [vk::PipelineColorBlendAttachmentState; 1] {
@@ -172,9 +164,8 @@ impl RenderPipeline {
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-            .alpha_blend_op(vk::BlendOp::ADD)
-            .build();
-        [color_blend_attachment]
+            .alpha_blend_op(vk::BlendOp::ADD);
+        [*color_blend_attachment]
     }
 
     pub fn create_pipeline_layout(
@@ -188,11 +179,11 @@ impl RenderPipeline {
             let pipeline_layout_create_info_builder = vk::PipelineLayoutCreateInfo::builder()
                 .push_constant_ranges(&push_constant_ranges)
                 .set_layouts(&descriptor_set_layouts);
-            PipelineLayout::new(context, pipeline_layout_create_info_builder.build()).unwrap()
+            PipelineLayout::new(context, *pipeline_layout_create_info_builder).unwrap()
         } else {
             let pipeline_layout_create_info_builder =
                 vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
-            PipelineLayout::new(context, pipeline_layout_create_info_builder.build()).unwrap()
+            PipelineLayout::new(context, *pipeline_layout_create_info_builder).unwrap()
         }
     }
 
