@@ -2,16 +2,16 @@ use crate::renderer::vulkan::{core::VulkanContext, render::PipelineLayout};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-pub struct GraphicsPipeline {
+pub struct ComputePipeline {
     pipeline: vk::Pipeline,
     pipeline_layout: PipelineLayout,
     context: Arc<VulkanContext>,
 }
 
-impl GraphicsPipeline {
+impl ComputePipeline {
     pub fn new(
         context: Arc<VulkanContext>,
-        create_info: vk::GraphicsPipelineCreateInfo,
+        create_info: vk::ComputePipelineCreateInfo,
         pipeline_layout: PipelineLayout,
     ) -> Self {
         let pipeline_create_info_arr = [create_info];
@@ -19,12 +19,12 @@ impl GraphicsPipeline {
             context
                 .logical_device()
                 .logical_device()
-                .create_graphics_pipelines(
+                .create_compute_pipelines(
                     vk::PipelineCache::null(),
                     &pipeline_create_info_arr,
                     None,
                 )
-                .expect("Failed to create graphics pipelines!")[0]
+                .expect("Failed to create compute pipelines!")[0]
         };
 
         Self {
@@ -43,7 +43,7 @@ impl GraphicsPipeline {
     }
 }
 
-impl Drop for GraphicsPipeline {
+impl Drop for ComputePipeline {
     fn drop(&mut self) {
         unsafe {
             self.context

@@ -1,8 +1,9 @@
 pub use self::{
-    descriptor_pool::*, descriptor_set_layout::*, framebuffer::*, graphics_pipeline::*,
-    pipeline_layout::*, render_pipeline::*, renderpass::*, swapchain::*,
+    compute_pipeline::*, descriptor_pool::*, descriptor_set_layout::*, framebuffer::*,
+    graphics_pipeline::*, pipeline_layout::*, render_pipeline::*, renderpass::*, swapchain::*,
 };
 
+pub mod compute_pipeline;
 pub mod descriptor_pool;
 pub mod descriptor_set_layout;
 pub mod framebuffer;
