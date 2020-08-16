@@ -705,7 +705,7 @@ impl PbrScene {
 
         let asset_cache = AssetCache::new(context.clone(), asset_names, command_pool);
         let asset_geometry_buffer =
-            NewGeometryBuffer::new(context.clone(), &command_pool, 6400000, 1000000).unwrap();
+            NewGeometryBuffer::new(context.clone(), &command_pool, 64000000, 10000000).unwrap();
 
         let pbr_pipeline_data = PbrPipelineData::new(
             context.clone(),
@@ -829,24 +829,10 @@ impl PbrScene {
             &self.pbr_pipeline_data,
         );
 
-        let offsets = [0];
-        let vertex_buffers = [self.asset_geometry_buffer.vertex_buffer.buffer()];
-
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_index_buffer(
-                    command_buffer,
-                    self.asset_geometry_buffer.index_buffer.buffer(),
-                    0,
-                    vk::IndexType::UINT32,
-                );
-        }
+        self.asset_geometry_buffer.bind(
+            self.context.logical_device().logical_device(),
+            command_buffer,
+        );
 
         [AlphaMode::Opaque, AlphaMode::Mask, AlphaMode::Blend]
             .iter()
@@ -946,24 +932,25 @@ impl PbrScene {
             let instance_count = instances[&name.0];
 
             if !self.asset_cache.metadata.contains_key(&name.0) {
+                debug!("DIDN'T CONTAIN KEY");
                 self.asset_cache
                     .generate_metadata(&asset_names, command_pool);
                 let asset = &self.asset_cache.assets[self.asset_cache.metadata[&name.0].index];
-                self.asset_geometry_buffer.append_vertices(&asset.vertices);
-                self.asset_geometry_buffer.append_indices(&asset.indices);
+                self.asset_geometry_buffer
+                    .append_vertices(&asset.vertices)
+                    .expect("Failed to append vertices");
+                self.asset_geometry_buffer
+                    .append_indices(&asset.indices)
+                    .expect("Failed to append indices");
                 self.pbr_pipeline_data.update_descriptor_set(
                     self.context.clone(),
-                    &self
-                        .asset_cache
-                        .assets
-                        .iter()
-                        .flat_map(|asset| &asset.textures)
-                        .collect::<Vec<_>>(),
+                    &self.asset_cache.textures(),
                     &self.environment_maps,
                 );
             }
 
-            if self.asset_cache.metadata[&name.0].instances.len() < instance_count - 1 {
+            if self.asset_cache.metadata[&name.0].instances.len() < instance_count {
+                debug!("DUPLICATE!");
                 self.asset_cache
                     .generate_metadata(&asset_names, command_pool);
             }
