@@ -68,7 +68,7 @@ impl App {
             (),
             vec![(
                 Transform::default(),
-                AssetName("assets/models/DamagedHelmet.glb".to_string()),
+                AssetName("assets/models/MetalRoughSpheres.glb".to_string()),
             )],
         );
 
