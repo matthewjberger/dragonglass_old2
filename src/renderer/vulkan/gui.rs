@@ -126,8 +126,8 @@ impl GuiRenderer {
             .build();
 
         let shader_paths = ShaderPathSetBuilder::default()
-            .vertex("assets/shaders/gui/gui.vert.spv")
-            .fragment("assets/shaders/gui/gui.frag.spv")
+            .vertex("assets/shaders/environment/gui.vert.spv")
+            .fragment("assets/shaders/environment/gui.frag.spv")
             .build()
             .unwrap();
 
