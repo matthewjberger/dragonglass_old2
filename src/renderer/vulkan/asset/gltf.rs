@@ -504,7 +504,7 @@ impl GltfAsset {
                                             graph[node_index].local_transform.scale = scale_vec;
                                         }
                                         TransformationSet::MorphTargetWeights(_weights) => {
-                                            unimplemented!()
+                                            //
                                         }
                                     }
                                 }
